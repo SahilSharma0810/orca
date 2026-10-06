@@ -105,20 +105,9 @@ describe("a launch pane's verdict in the window", () => {
 })
 
 describe('the user closing a launch tab', () => {
-  it('tells the host and is remembered while its agent is starting, so the agent stops', () => {
-    const notifyAgentLaunchPaneClosed = vi.fn()
-    vi.stubGlobal('window', { api: { ui: { notifyAgentLaunchPaneClosed } } })
-    try {
-      store.getState().closeTab(tabId)
-    } finally {
-      vi.unstubAllGlobals()
-    }
+  it('is remembered while its agent is starting, so a reveal that raced the close stops it', () => {
+    store.getState().closeTab(tabId)
     expect(wasAgentLaunchPaneClosedByUser(tabId, LEAF)).toBe(true)
-    expect(notifyAgentLaunchPaneClosed).toHaveBeenCalledWith({
-      worktreeId: WT,
-      tabId,
-      leafId: LEAF
-    })
   })
 
   it('is not, for a tab whose launch already has its outcome', () => {

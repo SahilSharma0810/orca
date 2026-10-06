@@ -25,6 +25,7 @@ import type { PtyControllerInventory } from './runtime-pty-controller-contract'
 import { FLOATING_TERMINAL_WORKTREE_ID } from '../../shared/constants'
 import { captureAcknowledgedTerminalTabRetirement } from './workspace-session-terminal-tab-retirement-identity'
 import { closeLeafOrTab } from '../persistence/terminal-topology/terminal-topology-commit'
+import { markAgentLaunchesClosedByUser } from '../agent-launch/agent-launch-pane-attachment'
 
 export class OrcaRuntimeWithBuildHeadlessMobileSessionBrowserTabs extends OrcaRuntimeWithPersistTerminalSurfaceRetirements {
   // Why: headless serve backs browser panes with offscreen WebContents that live
@@ -190,6 +191,8 @@ export class OrcaRuntimeWithBuildHeadlessMobileSessionBrowserTabs extends OrcaRu
     worktreeId: string,
     target: TerminalPaneCloseTarget
   ): Promise<void> {
+    // An explicit close (a phone's, the CLI's): a launch still starting or delivering there stops.
+    markAgentLaunchesClosedByUser(worktreeId, target)
     try {
       await this.closeTerminalSurface(worktreeId, target, { allowMissing: true })
     } catch (error) {

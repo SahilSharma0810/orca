@@ -6,7 +6,7 @@ import {
   type AgentSessionOperationRow
 } from '../../shared/agent-session-operation-ledger'
 import {
-  markAgentLaunchPaneClosedByUser,
+  markAgentLaunchesClosedByUser,
   resetAgentLaunchPanesForTests,
   resolveAgentLaunchPaneVerdict,
   trackRunningAgentLaunchPane,
@@ -96,12 +96,22 @@ describe('a pane an agent launch laid out', () => {
   })
 
   it("hears the user's close only while the pane's launch is running", () => {
-    markAgentLaunchPaneClosedByUser(PANE)
-    const running = trackRunningAgentLaunchPane(PANE)
+    const tabId = 'tab-closing'
+    const leafId = '3f2504e0-4f89-41d3-9a0c-0305e82c3301'
+    markAgentLaunchesClosedByUser('wt-1', { kind: 'tab', tabId })
+    const running = trackRunningAgentLaunchPane({
+      worktreeId: 'wt-1',
+      paneKey: `${tabId}:${leafId}`
+    })
     expect(running.closedByUser()).toBe(false)
-    markAgentLaunchPaneClosedByUser({ worktreeId: 'wt-1', paneKey: 'tab-9:leaf-9' })
+    markAgentLaunchesClosedByUser('wt-1', { kind: 'tab', tabId: 'tab-other' })
+    markAgentLaunchesClosedByUser('wt-1', {
+      kind: 'pane',
+      tabId,
+      leafId: '6fa459ea-ee8a-4ca4-894e-db77e160355e'
+    })
     expect(running.closedByUser()).toBe(false)
-    markAgentLaunchPaneClosedByUser(PANE)
+    markAgentLaunchesClosedByUser('wt-1', { kind: 'pane', tabId, leafId })
     expect(running.closedByUser()).toBe(true)
   })
 

@@ -64,7 +64,6 @@ import {
   stripSequencedStartupResumeArgv
 } from './host-env/codex-resume'
 import { ensureLinuxTerminalOrcaCliShimDir } from '../../cli/linux-terminal-orca-cli-shim'
-import { applyAgentLaunchPaneCloseReport } from '../../agent-launch/agent-launch-pane-close-report'
 
 export function registerPtyHandlers(
   mainWindow?: PtyRendererDelivery,
@@ -132,11 +131,6 @@ export function registerPtyHandlers(
   ipcMain.removeHandler('pty:reportRendererSerializerReady')
   ipcMain.removeHandler('pty:getMainBufferSnapshot')
   ipcMain.removeHandler('pty:sideEffectSnapshot')
-  // The window reports the user closing a launch's tab while it waited, so the launch stops.
-  ipcMain.removeAllListeners('agentLaunch:paneClosed')
-  ipcMain.on('agentLaunch:paneClosed', (_event, report: unknown) =>
-    applyAgentLaunchPaneCloseReport(report)
-  )
   ipcMain.removeHandler('pty:getRendererDeliveryDebugSnapshot')
   ipcMain.removeHandler('pty:resetRendererDeliveryDebug')
   ipcMain.removeHandler('pty:reportRendererDeliveryState')

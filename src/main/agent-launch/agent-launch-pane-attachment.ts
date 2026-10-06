@@ -6,8 +6,7 @@
  * binding, say whether a process holds it. Once the fate is final for the pane, the tab itself keeps
  * it (`agentLaunchPane.outcome`) for the tab's life, so the pane no longer reads the record. The one
  * in-memory fact is a launch still running in this process, which dies with that launch. Its pane
- * attaches as soon as its agent runs, but the launch, not that spawn, settles the window's marker,
- * so a close while the prompt is still being delivered reaches the launch as the user's.
+ * attaches as soon as its agent runs; a user's close of its tab or pane, committed to main, stops it.
  */
 
 import {
@@ -20,12 +19,15 @@ import type {
   AgentLaunchPaneOutcome,
   AgentLaunchPaneVerdict
 } from '../../shared/agent-launch-pane-verdict'
+import { parsePaneKey } from '../../shared/stable-pane-id'
+import type { TerminalSurfaceCloseTarget } from '../../shared/terminal-surface-close-target'
 
 type RunningLaunch = {
+  pane: AgentSessionOperationOwnedPane
   /** The launch's agent holds the pane, or the launch is over: whichever comes first. */
   settled: Promise<{ tabTakenBack: boolean }>
   finished: Promise<{ tabTakenBack: boolean }>
-  /** The user closed the launch's tab while it waited; set by the window's close. */
+  /** The user closed the launch's tab or pane while it ran; set by main's commit of that close. */
   closedByUser: boolean
 }
 
@@ -40,7 +42,7 @@ export type RunningAgentLaunchPane = {
   agentBound(): void
   /** The launch is over; its record says how. `tabTakenBack`: the host is closing the tab. */
   finish(outcome: { tabTakenBack: boolean }): void
-  /** The user closed this launch's tab while it waited: the launch must not run, or must stop. */
+  /** The user closed this launch's tab or pane: the launch must not run, or must stop. */
   closedByUser(): boolean
 }
 
@@ -52,6 +54,7 @@ export function trackRunningAgentLaunchPane(
   let resolve!: (outcome: { tabTakenBack: boolean }) => void
   let settle!: (outcome: { tabTakenBack: boolean }) => void
   const running: RunningLaunch = {
+    pane,
     settled: new Promise((done) => {
       settle = done
     }),
@@ -79,16 +82,16 @@ export function trackRunningAgentLaunchPane(
   }
 }
 
-/** The launch reports the pane's verdict when it ends; until then the window keeps its marker. */
-export function isAgentLaunchRunningInPane(pane: AgentSessionOperationOwnedPane): boolean {
-  return runningLaunchesByPane.has(paneKeyOf(pane))
-}
-
-/** The window's report that the user closed a pane's tab; only a launch still running cares. */
-export function markAgentLaunchPaneClosedByUser(pane: AgentSessionOperationOwnedPane): void {
-  const running = runningLaunchesByPane.get(paneKeyOf(pane))
-  if (running) {
-    running.closedByUser = true
+/** The user closed a tab, or one pane of it: every launch still running there stops. */
+export function markAgentLaunchesClosedByUser(
+  worktreeId: string,
+  target: TerminalSurfaceCloseTarget
+): void {
+  for (const running of runningLaunchesByPane.values()) {
+    const pane = running.pane.worktreeId === worktreeId ? parsePaneKey(running.pane.paneKey) : null
+    if (pane?.tabId === target.tabId && (target.kind === 'tab' || pane.leafId === target.leafId)) {
+      running.closedByUser = true
+    }
   }
 }
 

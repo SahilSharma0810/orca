@@ -15,7 +15,7 @@ describe('a launch tab while its agent is starting', () => {
     storeState.tabsByWorktree['wt-1'] = []
     // The harness resets modules; the bridge reads the instance it imported.
     const { noteAgentLaunchPaneClosedByUser } = await import('@/lib/agent-launch-pane-closes')
-    noteAgentLaunchPaneClosedByUser('wt-1', 'tab-closed', LEAF)
+    noteAgentLaunchPaneClosedByUser('tab-closed', LEAF)
 
     createTerminalListenerRef.current({
       requestId: 'reveal-closed-launch-tab',

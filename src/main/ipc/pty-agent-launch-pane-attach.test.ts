@@ -294,7 +294,7 @@ describe('a pane whose process belongs to an agent launch', () => {
     expect(providerSpawn).toHaveBeenCalled()
   })
 
-  it("attaches once the launch's agent holds the pane, leaving the window's marker to the launch", async () => {
+  it("attaches once the launch's agent holds the pane, not once its prompt lands", async () => {
     const providerSpawn = vi.fn(async () => ({ id: 'pty-agent' }))
     const runtime = registerWithRuntime(providerSpawn, { rows: [] })
     const running = trackRunningAgentLaunchPane(pane)
@@ -306,8 +306,10 @@ describe('a pane whose process belongs to an agent launch', () => {
 
     await mounted.catch(() => {})
     expect(providerSpawn).toHaveBeenCalled()
-    // A close now must still reach the launch, so the window keeps the pane's launch marker.
-    expect(runtime.reportAgentLaunchPaneVerdict).not.toHaveBeenCalled()
+    // Settled for the window: a later close reaches the launch through main's commit of it.
+    expect(runtime.reportAgentLaunchPaneVerdict).toHaveBeenCalledWith(PANE_ADDRESS, {
+      kind: 'proceed'
+    })
     running.finish({ tabTakenBack: false })
   })
 
