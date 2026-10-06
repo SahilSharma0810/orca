@@ -68,6 +68,7 @@ describe('agent.launch with the real floating workspace resolver', () => {
           startupAgent: 'claude',
           // Derived on the host by the window's rule, from the same chat-view setting.
           viewMode: structuredPreference ? 'chat' : 'terminal',
+          onLaunchHost: expect.any(Function),
           onPtySpawnDispatched: expect.any(Function)
         }
       )
