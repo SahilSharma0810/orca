@@ -92,7 +92,7 @@ export type EarlyAgentLaunchTab = {
   surfacePublished(result: AgentLaunchResult): void
   /** The window has said it shows the tab, so the spawn must bind it without a second reveal. */
   windowShowsTab(): boolean
-  /** The user closed the tab while it waited: the launch must not start its agent, or must stop it. */
+  /** The user closed the tab or pane: the launch must not start its agent, or must stop it. */
   closedByUser(): boolean
   /** The launch is over, however it ended. A tab this request made goes when nothing will ever run
    *  in it: never admitted, or its surface landed elsewhere. A failed launch's tab stays to say why. */

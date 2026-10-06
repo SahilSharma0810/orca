@@ -25,7 +25,6 @@ import type {
 import { parsePaneKey } from '../../../../shared/stable-pane-id'
 import {
   markAgentLaunchesClosedByUser,
-  markAgentLaunchPaneClosedByUser,
   resetAgentLaunchPanesForTests,
   resolveAgentLaunchPaneVerdict,
   type AgentLaunchPaneEvidence
@@ -565,10 +564,7 @@ describe('the user closing the tab while it starts', () => {
     const publish = runtime.publishAgentLaunchTab.getMockImplementation()!
     runtime.publishAgentLaunchTab.mockImplementation((request) => {
       const published = publish(request)
-      markAgentLaunchPaneClosedByUser({
-        worktreeId: 'wt-7',
-        paneKey: `${request.tabId}:${request.leafId}`
-      })
+      markAgentLaunchesClosedByUser('wt-7', { kind: 'tab', tabId: request.tabId })
       return published
     })
   }
@@ -600,7 +596,7 @@ describe('the user closing the tab while it starts', () => {
     const runtime = hostWithWindow({ terminalPaneKey: PANE_KEY, lineCarriesPrompt: false })
     const spawn = runtime.createTerminal.getMockImplementation()!
     runtime.createTerminal.mockImplementationOnce(async (selector, createOptions) => {
-      markAgentLaunchPaneClosedByUser({ worktreeId: 'wt-7', paneKey: PANE_KEY })
+      markAgentLaunchesClosedByUser('wt-7', { kind: 'tab', tabId: TAB_ID })
       return spawn(selector, createOptions)
     })
 
@@ -620,7 +616,7 @@ describe('the user closing the tab while it starts', () => {
     const spawn = runtime.createTerminal.getMockImplementation()!
     runtime.createTerminal.mockImplementationOnce(async (selector, createOptions) => {
       const created = await spawn(selector, createOptions)
-      markAgentLaunchPaneClosedByUser({ worktreeId: 'wt-7', paneKey: PANE_KEY })
+      markAgentLaunchesClosedByUser('wt-7', { kind: 'tab', tabId: TAB_ID })
       return created
     })
 

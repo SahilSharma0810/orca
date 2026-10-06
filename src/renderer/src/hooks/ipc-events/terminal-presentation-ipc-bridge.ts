@@ -60,7 +60,7 @@ export function registerTerminalPresentationIpcBridge(unsubs: (() => void)[]): v
           }
           const worktreeTabs = store.tabsByWorktree[worktreeId] ?? []
           if (ptyId && tabId && leafId && wasAgentLaunchPaneClosedByUser(tabId, leafId)) {
-            // The user closed the launch's tab while it waited. That close wins: the tab stays
+            // The user closed the launch's tab or pane while it waited. That close wins: it stays
             // closed, and its agent stops, as closing any tab stops what runs in it.
             void window.api.pty.kill(ptyId)
             throw new Error('agent_launch_tab_closed')

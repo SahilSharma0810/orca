@@ -42,7 +42,7 @@ export type RunningAgentLaunchPane = {
   agentBound(): void
   /** The launch is over; its record says how. `tabTakenBack`: the host is closing the tab. */
   finish(outcome: { tabTakenBack: boolean }): void
-  /** The user closed this launch's tab while it waited: the launch must not run, or must stop. */
+  /** The user closed this launch's tab or pane: the launch must not run, or must stop. */
   closedByUser(): boolean
 }
 
@@ -79,14 +79,6 @@ export function trackRunningAgentLaunchPane(
       resolve(outcome)
     },
     closedByUser: () => running.closedByUser
-  }
-}
-
-/** The user closed a pane a launch still runs in; only a launch still running cares. */
-export function markAgentLaunchPaneClosedByUser(pane: AgentSessionOperationOwnedPane): void {
-  const running = runningLaunchesByPane.get(paneKeyOf(pane))
-  if (running) {
-    running.closedByUser = true
   }
 }
 
