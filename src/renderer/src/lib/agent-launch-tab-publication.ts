@@ -95,9 +95,6 @@ export function publishAgentLaunchTab(
       ].filter((worktree) => worktree.id === worktreeId)
   })
   const focuses = request.viewer === 'focus-window' || request.viewer === 'focus-in-workspace'
-  if (request.viewer === 'focus-window') {
-    activateTerminalInitiatedWorktree(store, worktreeId)
-  }
   const tab = store.createTab(worktreeId, placement.groupId, undefined, {
     id: tabId,
     initialLeafId: leafId,
@@ -121,6 +118,10 @@ export function publishAgentLaunchTab(
     if (unifiedTabId) {
       insertUnifiedTabAfterAnchor(worktreeId, unifiedTabId, placement.anchorTabId)
     }
+  }
+  if (request.viewer === 'focus-window') {
+    // After the tab lands: activating prunes the workspace's empty groups, the requested split too.
+    activateTerminalInitiatedWorktree(useAppStore.getState(), worktreeId)
   }
   const current = useAppStore.getState()
   // The desktop's own launch stays in its workspace: the window follows only if it is still there.

@@ -170,16 +170,19 @@ describe('placement', () => {
     expect(launchTab()?.groupId).toBe(splitGroupId)
   })
 
-  // The CLI's focused launch activates the workspace before its tab is created; that must not lose it.
+  // Activating a workspace with a live tab prunes its empty groups; a CLI's focused launch activates
+  // it, and the split it asked for must still be there to receive the tab.
   it.each(
     (['none', 'focus-window', 'focus-in-workspace', 'reveal-owner'] as const).flatMap((viewer) => [
       { viewer, focused: 'split' as const },
       { viewer, focused: 'source' as const }
     ])
   )(
-    'lands in a just-created empty split for a $viewer caller ($focused focused)',
+    'lands in a just-created empty split beside a live terminal for a $viewer caller ($focused focused)',
     ({ viewer, focused }) => {
-      const { sourceGroupId, splitGroupId } = twoGroups()
+      store.getState().createTab(WT)
+      const sourceGroupId = store.getState().groupsByWorktree[WT]![0]!.id
+      const splitGroupId = store.getState().createEmptySplitGroup(WT, sourceGroupId, 'right')!
       store.getState().focusGroup(WT, focused === 'split' ? splitGroupId : sourceGroupId)
 
       const published = publishAgentLaunchTab(
