@@ -14,6 +14,7 @@
  * early tab, and the launch's tab appears when it spawns, exactly as before.
  */
 
+import type { PtySpawnTiming } from '../../../ipc/pty-spawn-timing'
 import { randomUUID } from 'node:crypto'
 import type {
   AgentLaunchPlacementReceipt,
@@ -105,6 +106,8 @@ export type EarlyAgentLaunchTab = {
 export type AgentLaunchView = {
   early: EarlyAgentLaunchTab | null
   presentation: AgentLaunchParams['presentation']
+  /** Opt-in stage times (`ORCA_PTY_SPAWN_TIMING=1`), so a rig can tell where a launch spent them. */
+  timing?: PtySpawnTiming
 }
 
 export function withPlacement(result: AgentLaunchResult, view: AgentLaunchView): AgentLaunchResult {

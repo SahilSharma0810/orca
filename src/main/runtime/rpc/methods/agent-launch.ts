@@ -35,6 +35,7 @@ import {
 } from '../../../agent-launch/agent-launch-not-started'
 import type { OrcaRuntimeService } from '../../orca-runtime'
 import { defineMethod, type RpcContext } from '../core'
+import { createPtySpawnTiming } from '../../../ipc/pty-spawn-timing'
 import { admitAgentLaunchOperation, agentLaunchOperationCallerKey } from './agent-launch-replay'
 import {
   AgentLaunchExecutionError,
@@ -55,7 +56,11 @@ import {
 } from './agent-launch-caller-selection'
 import { agentLaunchWorkspaceFactory } from './agent-launch-worktree-creation'
 import { resolveUnlaunchedIntent } from './agent-launch-intent-resolution'
-import { publishEarlyTab, withPlacement, type AgentLaunchView } from './agent-launch-tab-publication'
+import {
+  publishEarlyTab,
+  withPlacement,
+  type AgentLaunchView
+} from './agent-launch-tab-publication'
 
 /**
  * Advertising `agent.launch.v2` is a client's statement that it understands EITHER outcome — a
@@ -107,6 +112,7 @@ async function runAgentLaunch(
     // The tab is shown as it is published, not after a prompt that can take a minute to land.
     onSurfacePublished: (surface) => {
       view.early?.surfacePublished(surface)
+      view.timing?.mark('terminal_created')
       replaySafe?.recordSurface(withPlacement(surface, view))
       if (callerNavigationId !== null && view.presentation !== 'background') {
         selectAgentLaunchTabForCaller(context.runtime, surface, callerNavigationId)
@@ -172,7 +178,9 @@ async function executeReplaySafeAgentLaunch(
   fingerprint: string
 ): Promise<AgentLaunchResult> {
   // The tab is the host's first act: admission has a cold cost the user should not watch.
+  const timing = createPtySpawnTiming()
   const early = await publishEarlyTab(params, context)
+  timing.mark('early_tab')
   let admission: Awaited<ReturnType<typeof admitAgentLaunchOperation>>
   try {
     admission = await admitAgentLaunchOperation(
@@ -195,13 +203,18 @@ async function executeReplaySafeAgentLaunch(
     }
     return admission.result
   }
+  timing.mark('admission')
   early?.executing()
-  return withEarlyTab(early, () =>
+  const result = await withEarlyTab(early, () =>
     executeAdmittedAgentLaunch(params, context, admission, {
       early,
-      presentation: params.presentation
+      presentation: params.presentation,
+      timing
     })
   )
+  timing.mark('prompt_settled')
+  timing.log(params.operationId, { agent: params.agent })
+  return result
 }
 
 async function executeAdmittedAgentLaunch(

@@ -287,6 +287,23 @@ describe('the instant tab', () => {
     })
   })
 
+  // Why: a rig needs to tell a slow launch's bookkeeping from its spawn (QA: Claude up at 12 s).
+  it('logs where the launch spent its time when spawn timing is on', async () => {
+    vi.stubEnv('ORCA_PTY_SPAWN_TIMING', '1')
+    const log = vi.spyOn(console, 'log').mockImplementation(() => {})
+    try {
+      await replayLaunch(hostWithWindow({ terminalPaneKey: PANE_KEY }), { paneKey: PANE_KEY }, CLI)
+      expect(log).toHaveBeenCalledWith(
+        expect.stringMatching(
+          /^\[pty-spawn-timing\] id=\S+ total=\d+ms early_tab=\d+ms admission=\d+ms terminal_created=\d+ms prompt_settled=\d+ms agent=claude$/
+        )
+      )
+    } finally {
+      log.mockRestore()
+      vi.unstubAllEnvs()
+    }
+  })
+
   it('is not shown early for a chat-mode launch, whose tab is the session', async () => {
     const runtime = hostWithWindow({ settings: STRUCTURED_PREFERENCE })
 
