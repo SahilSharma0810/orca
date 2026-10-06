@@ -78,16 +78,45 @@ describe('proving a prompt the launch command carried', () => {
   // Why: on a loaded host a crash at startup lives long enough to be seen (QA: no notice in 70 s).
   it('calls an agent seen in front an exit when its launch line finishes after', async () => {
     const { result, elapsed } = await timed(
-      prove(pane({ foreground: () => 'launched-agent', finishedAt: 600 }), 8_000)
+      prove(
+        pane({ foreground: (ms) => (ms < 600 ? 'launched-agent' : 'shell'), finishedAt: 600 }),
+        8_000
+      )
     )
     expect(result).toEqual({ outcome: 'not-delivered', reason: 'agent-exited' })
     expect(elapsed).toBeLessThan(1_500)
   })
 
-  it('calls an agent seen in front an exit when the shell comes back after it', async () => {
+  // Why: Orca's codex wrapper runs `codex --help` first, and the shell holds the terminal between.
+  it('never calls the shell between a probe and the agent an exit', async () => {
+    const foreground = (ms: number) => (ms < 200 || ms >= 500 ? 'launched-agent' : 'shell')
+    await expect(prove(pane({ foreground }), 8_000)).resolves.toEqual({
+      outcome: 'handed-to-terminal'
+    })
+  })
+
+  // Why: a nested shell inside a running agent can report a finished command on the agent's pane.
+  it('never calls a finished command an exit while the launched agent holds the terminal', async () => {
     await expect(
-      prove(pane({ foreground: (ms) => (ms < 400 ? 'launched-agent' : 'shell') }), 8_000)
+      prove(pane({ foreground: () => 'launched-agent', finishedAt: 100 }), 8_000)
+    ).resolves.toEqual({ outcome: 'handed-to-terminal' })
+  })
+
+  it('catches an exit just before the budget ends', async () => {
+    await expect(
+      prove(
+        pane({ foreground: (ms) => (ms < 300 ? 'launched-agent' : 'shell'), finishedAt: 950 }),
+        1_000
+      )
     ).resolves.toEqual({ outcome: 'not-delivered', reason: 'agent-exited' })
+  })
+
+  it('answers by the budget even when a read never returns', async () => {
+    const stuck = pane({ foreground: () => 'shell' })
+    stuck.readTerminalForegroundVerdict.mockImplementation(() => new Promise(() => {}))
+    const { result, elapsed } = await timed(prove(stuck, 400))
+    expect(result).toEqual({ outcome: 'handed-to-terminal' })
+    expect(elapsed).toBeLessThan(700)
   })
 
   // Why: a slow shell startup runs its own commands in front; none of them is the agent.

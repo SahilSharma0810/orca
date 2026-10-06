@@ -4,9 +4,10 @@
  * The prompt is on the agent's command line, so the agent has it once it runs: the launched agent
  * itself (named on its command line, never any other process: a slow shell startup runs its own)
  * still in front a moment after it was first seen, or the agent's own hook turn, is the answer. The
- * pane's shell reporting the launch line finished, or coming back after the agent was seen, is an
- * exit at startup. With neither within the budget, the prompt stays handed to the terminal, as on a
- * host that cannot see: a slow read never costs the caller its follow-up.
+ * pane's shell reporting the launch line finished, with the launched agent not in front, is an exit
+ * at startup. A shell merely in front is not: Orca's codex wrapper runs a probe before the agent, and
+ * the shell holds the terminal between them. With neither within the budget, the prompt stays handed
+ * to the terminal, as on a host that cannot see: a slow read never costs the caller its follow-up.
  */
 
 import type { AgentLaunchPromptDisposal } from '../../../../shared/agent-launch-intent'
@@ -19,6 +20,10 @@ type CarriedPromptProofRuntime = Pick<
   | 'getTerminalPromptRequestBinding'
   | 'readTerminalForegroundVerdict'
   | 'terminalCommandFinishedSince'
+>
+
+type ForegroundVerdict = Awaited<
+  ReturnType<CarriedPromptProofRuntime['readTerminalForegroundVerdict']>
 >
 
 const RECEIVED: AgentLaunchPromptDisposal = { outcome: 'handed-to-terminal' }
@@ -77,29 +82,51 @@ async function watchLaunch(
 ): Promise<AgentLaunchPromptDisposal | null> {
   const deadline = Date.now() + timeoutMs
   const { ptyId } = args.runtime.getTerminalPromptRequestBinding(args.handle)
+  // The shell's own report that the line ended; a nested shell inside a running agent can leak one,
+  // so it counts only with the launched agent not in front.
+  const exited = (verdict: ForegroundVerdict): boolean =>
+    verdict !== 'launched-agent' &&
+    args.runtime.terminalCommandFinishedSince(ptyId, args.launchStartedAt)
   let seenAt: number | null = null
+  let verdict: ForegroundVerdict = 'unknown'
   let interval = FIRST_READ_MS
   while (!signal.aborted && Date.now() < deadline) {
-    // The shell's own report, so an agent that lived too briefly to be seen still counts as exited.
-    if (args.runtime.terminalCommandFinishedSince(ptyId, args.launchStartedAt)) {
+    // A read that outlasts the budget answers nothing: the budget is the caller's longest wait.
+    verdict = await readWithin(
+      args.runtime.readTerminalForegroundVerdict(ptyId, args.agent),
+      deadline - Date.now(),
+      signal
+    )
+    if (exited(verdict)) {
       return EXITED
     }
-    const verdict = await args.runtime
-      .readTerminalForegroundVerdict(ptyId, args.agent)
-      .catch(() => 'unknown' as const)
     if (verdict === 'launched-agent') {
       seenAt ??= Date.now()
       if (Date.now() - seenAt >= STARTUP_SURVIVAL_MS) {
         return RECEIVED
       }
-      interval = FIRST_READ_MS
-    } else if (verdict === 'shell' && seenAt !== null) {
-      return EXITED
     }
-    await abortableDelay(interval, signal)
+    await abortableDelay(Math.min(interval, Math.max(0, deadline - Date.now())), signal)
     interval = Math.min(interval * 2, MAX_READ_MS)
   }
+  if (signal.aborted) {
+    return null
+  }
+  if (exited(verdict)) {
+    return EXITED
+  }
   return seenAt !== null ? RECEIVED : null
+}
+
+async function readWithin(
+  read: Promise<ForegroundVerdict>,
+  ms: number,
+  signal: AbortSignal
+): Promise<ForegroundVerdict> {
+  return Promise.race([
+    read.catch(() => 'unknown' as const),
+    abortableDelay(ms, signal).then(() => 'unknown' as const)
+  ])
 }
 
 /** The first answer that is not null, or null once every one has settled without one. */
