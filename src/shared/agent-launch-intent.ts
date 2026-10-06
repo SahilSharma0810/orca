@@ -172,14 +172,13 @@ export type AgentLaunchPromptDisposal =
    *   pasted, the agent proven in front (macOS, Linux, SSH to them)       -> handed-to-terminal
    *   pasted on a Windows cmd or PowerShell pane, no shell in front       -> handed-to-terminal
    *   on the line, a caller that reads `unconfirmed`, a host that can see
-   *     the agent: once the agent runs (in front, or its hook turn), or
-   *     when the host sees neither within its budget                     -> handed-to-terminal
+   *     the agent: once the launched agent has held the terminal 2 s or
+   *     its hook turn arrives, or when the host sees neither in 10 s     -> handed-to-terminal
    *   on the line, a Windows host (it can never see the agent in front)   -> handed-to-terminal
    *   on the line, a caller that cannot read `unconfirmed`                 -> handed-to-terminal
-   *   the shell finished the line before the agent ran, or a paste found
-   *     no agent                                                          -> not-delivered
-   *   a paste with no proof within its budget, or the host stopped
-   *     mid-delivery                                                      -> unconfirmed
+   *   the shell reports the line finished with the launched agent not in
+   *     front, before then; or a paste that found no agent               -> not-delivered
+   *   the host stopped mid-delivery (a replay of its record)             -> unconfirmed
    */
   | { outcome: 'handed-to-terminal' }
   /** Not delivered by this call; the caller still owns the text. `reason`, when present, says why;
@@ -188,8 +187,8 @@ export type AgentLaunchPromptDisposal =
   | { outcome: 'not-delivered'; reason?: string }
   /**
    * The text may or may not have arrived, so the caller must not resend. Replayed when the host
-   * recorded the running agent and stopped before the delivery reported back; live when a paste
-   * found no proof it arrived. Sent only to a caller advertising
+   * recorded the running agent and stopped before the delivery reported back. Sent only to a caller
+   * advertising
    * `agent.launch.prompt-unconfirmed.v1`; a replay to any other caller is refused with
    * `agent_session_operation_unknown` instead.
    */

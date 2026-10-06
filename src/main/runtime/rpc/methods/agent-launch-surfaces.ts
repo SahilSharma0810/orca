@@ -55,7 +55,7 @@ export function agentLaunchSurfaceFactory(
   // close can both land after admission.
   earlyTab: Pick<EarlyAgentLaunchTab, 'windowShowsTab' | 'closedByUser'> | null = null
 ): AgentLaunchSurfaceFactory {
-  // The facts each terminal's prompt was carried by, so its paste and its receipt read the same host.
+  // The facts each agent terminal was planned by, so its paste and its receipt read the same host.
   const launchHostByHandle = new Map<string, LaunchHost>()
   return {
     createStructuredSession: async ({
@@ -204,8 +204,8 @@ export function agentLaunchSurfaceFactory(
           : 'refuse'
       }),
     confirmCarriedTerminalPrompt: async ({ handle, agent, launchStartedAt }) =>
-      // Where the host can see the agent, a caller that reads `unconfirmed` hears of an exit at
-      // startup; elsewhere (Windows, the phone) the prompt is handed over at once.
+      // Where the host can see the agent, a caller that reads the newer receipt waits to hear of an
+      // exit at startup; elsewhere (Windows, the phone) the prompt is handed over at once.
       readsUnconfirmedLaunchPrompt(context) && launchHostByHandle.get(handle)?.provesAgentInFront
         ? proveCarriedTerminalAgentLaunchPrompt({
             runtime: context.runtime,

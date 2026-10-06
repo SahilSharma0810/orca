@@ -54,7 +54,6 @@ export type RuntimeManagedWorktreeCreateArgs = {
   startupPrompt?: string
   /** Main-internal: set by a caller that delivers an uncarried `startupPrompt` itself (one
    *  `carryLaunchPrompt` leaves for the paste); reports whether the prompt rode the command. */
-  /** `host`: the launch host's facts the carry was decided by. */
   onStartupPromptCarry?: (carried: boolean) => void
   /** Main-internal: the caller's paste for an uncarried `startupPrompt` (`startupPromptPaste` on a
    *  terminal create). */

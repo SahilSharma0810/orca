@@ -31,6 +31,8 @@ export const AGENT_LAUNCH_REPLAY_REQUIRED_RUNTIME_CAPABILITY =
 
 // A client that reads `prompt.outcome: 'unconfirmed'` on a replayed launch. Without it, a launch
 // whose host stopped mid-delivery replays as `agent_session_operation_unknown`, as it always has.
+// Such a client also waits, up to 10 s, to hear whether a prompt on the launch line reached its
+// agent (`not-delivered`, reason `agent-exited`); one without it is answered at once, as before.
 export const AGENT_LAUNCH_PROMPT_UNCONFIRMED_RUNTIME_CAPABILITY =
   'agent.launch.prompt-unconfirmed.v1' as const
 
