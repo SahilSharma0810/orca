@@ -120,6 +120,14 @@ describe('proving a prompt the launch command carried', () => {
     ).resolves.toEqual({ outcome: 'not-delivered', reason: 'agent-exited' })
   })
 
+  it('answers by the budget even when the hook watch never returns', async () => {
+    const stuck = pane({ foreground: () => 'shell' })
+    stuck.observeTerminalLaunchTurnStart.mockImplementation(() => new Promise(() => {}))
+    const { result, elapsed } = await timed(prove(stuck, 400))
+    expect(result).toEqual({ outcome: 'handed-to-terminal' })
+    expect(elapsed).toBeLessThan(700)
+  })
+
   it('answers by the budget even when a read never returns', async () => {
     const stuck = pane({ foreground: () => 'shell' })
     stuck.readTerminalForegroundVerdict.mockImplementation(() => new Promise(() => {}))

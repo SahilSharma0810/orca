@@ -42,6 +42,8 @@ const SHELL_RETURN_CONFIRM_MS = 500
 /** Each foreground read is one process scan of the pane, so they start often and back off. */
 const FIRST_READ_MS = 100
 const MAX_READ_MS = 1_000
+/** The watch's last exit check runs at its deadline; this lets it finish before the budget answers. */
+const BUDGET_GRACE_MS = 100
 
 export async function proveCarriedTerminalAgentLaunchPrompt(args: {
   runtime: CarriedPromptProofRuntime
@@ -68,8 +70,10 @@ export async function proveCarriedTerminalAgentLaunchPrompt(args: {
           : null
     })().catch(() => null)
     const launchedAgent = watchLaunch(args, timeoutMs, stop.signal).catch(() => null)
-    // Bookkeeping never gates the caller: a read that cannot answer leaves the prompt handed over.
-    return (await firstAnswer([hookTurn, launchedAgent])) ?? RECEIVED
+    // Bookkeeping never gates the caller: a read that cannot answer leaves the prompt handed over,
+    // and no read, either watch's, holds it past the budget (the watch's last check fits its grace).
+    const budget = abortableDelay(timeoutMs + BUDGET_GRACE_MS, stop.signal).then(() => null)
+    return (await Promise.race([firstAnswer([hookTurn, launchedAgent]), budget])) ?? RECEIVED
   } finally {
     stop.abort()
   }
