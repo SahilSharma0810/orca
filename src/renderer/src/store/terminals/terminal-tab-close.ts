@@ -65,7 +65,7 @@ export function createTerminalTabCloseActions(
               closing.agentLaunchPane &&
               !closing.agentLaunchPane.outcome
             ) {
-              noteAgentLaunchPaneClosedByUser(wId, tabId, closing.agentLaunchPane.leafId)
+              noteAgentLaunchPaneClosedByUser(tabId, closing.agentLaunchPane.leafId)
             }
             // Why: capture the first-matched tab's snapshot for the Cmd+Shift+T reopen stack (see capturedSnapshot below).
             if (!closedTab) {

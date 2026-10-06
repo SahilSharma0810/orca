@@ -24,6 +24,7 @@ import type {
 } from '../../../../shared/agent-launch-tab-publication'
 import { parsePaneKey } from '../../../../shared/stable-pane-id'
 import {
+  markAgentLaunchesClosedByUser,
   markAgentLaunchPaneClosedByUser,
   resetAgentLaunchPanesForTests,
   resolveAgentLaunchPaneVerdict,
@@ -280,11 +281,7 @@ describe('the instant tab', () => {
       paneKey: PANE_KEY
     })
     await expect(paneVerdict(runtime)).resolves.toEqual({ kind: 'proceed' })
-    // The launch settles the window's marker as it ends; nothing else is reported.
-    expect(runtime.reportAgentLaunchPaneVerdict).toHaveBeenCalledTimes(1)
-    expect(runtime.reportAgentLaunchPaneVerdict).toHaveBeenCalledWith(expect.anything(), {
-      kind: 'proceed'
-    })
+    expect(runtime.reportAgentLaunchPaneVerdict).not.toHaveBeenCalled()
   })
 
   it('is not shown early for a chat-mode launch, whose tab is the session', async () => {
@@ -339,15 +336,11 @@ describe('the pane while its launch delivers the prompt', () => {
       new Promise<'still waiting'>((resolve) => setTimeout(() => resolve('still waiting'), 200))
     ])
     expect(verdict).toEqual({ kind: 'proceed' })
-    // The window keeps its launch marker until the launch ends, so a close still reaches it.
-    expect(runtime.reportAgentLaunchPaneVerdict).not.toHaveBeenCalled()
 
     deliver(true)
     await expect(launched).resolves.toMatchObject({ outcome: { kind: 'terminal' } })
-    expect(runtime.reportAgentLaunchPaneVerdict).toHaveBeenCalledWith(
-      expect.objectContaining({ worktreeId: 'wt-7' }),
-      { kind: 'proceed' }
-    )
+    // The pane's own spawn settles its tab; the launch reports nothing for a pane it ran in.
+    expect(runtime.reportAgentLaunchPaneVerdict).not.toHaveBeenCalled()
   })
 
   it('still stops the launch as closed when its attached tab is closed before the prompt lands', async () => {
@@ -356,7 +349,8 @@ describe('the pane while its launch delivers the prompt', () => {
     await vi.waitFor(() => expect(deliverTerminalAgentLaunchPrompt).toHaveBeenCalled())
     await expect(paneVerdict(runtime)).resolves.toEqual({ kind: 'proceed' })
 
-    markAgentLaunchPaneClosedByUser({ worktreeId: 'wt-7', paneKey: PANE_KEY })
+    // Main's commit of the user's tab close, as the window sends it.
+    markAgentLaunchesClosedByUser('wt-7', { kind: 'tab', tabId: TAB_ID })
     deliver(true)
 
     await expect(launched).rejects.toMatchObject({ code: AGENT_LAUNCH_TAB_CLOSED_CODE })

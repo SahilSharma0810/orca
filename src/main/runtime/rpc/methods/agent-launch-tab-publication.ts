@@ -280,9 +280,8 @@ function trackEarlyAgentLaunchTab(args: {
     closedByUser: args.closedByUser,
     finish: () => {
       if (ranHere === true) {
+        // The agent's spawn bound the pane; its own spawn settles the tab.
         args.finishRunning(false)
-        // Kept until now so a close while the prompt was delivered still stopped this launch.
-        args.report({ kind: 'proceed' })
         return
       }
       void published.then((answer) => {
