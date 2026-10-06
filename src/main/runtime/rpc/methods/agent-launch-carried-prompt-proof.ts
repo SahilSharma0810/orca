@@ -5,8 +5,9 @@
  * itself (named on its command line, never any other process: a slow shell startup runs its own)
  * still in front a moment after it was first seen, or the agent's own hook turn, is the answer. The
  * pane's shell reporting the launch line finished, with the launched agent not in front, is an exit
- * at startup. A shell merely in front is not: Orca's codex wrapper runs a probe before the agent, and
- * the shell holds the terminal between them. With neither within the budget, the prompt stays handed
+ * at startup; so is the shell holding the terminal for a moment after the agent was seen, for a shell
+ * that sends no such report. A single read of the shell is not: Orca's codex wrapper runs a probe
+ * before the agent, and the shell holds the terminal between them. With neither within the budget, the prompt stays handed
  * to the terminal, as on a host that cannot see: a slow read never costs the caller its follow-up.
  */
 
@@ -34,6 +35,10 @@ const PROOF_BUDGET_MS = 10_000
 /** How long the agent must stay in front once seen: a crash at startup, slowed by a loaded host,
  *  can live long enough to be seen. */
 const STARTUP_SURVIVAL_MS = 2_000
+/** How long the shell must hold the terminal, after the agent was seen, to be an exit where the
+ *  shell sends no finished-command report (Orca's SSH zsh, fish). Orca's codex wrapper hands the
+ *  terminal from its probe to codex in milliseconds. */
+const SHELL_RETURN_CONFIRM_MS = 500
 /** Each foreground read is one process scan of the pane, so they start often and back off. */
 const FIRST_READ_MS = 100
 const MAX_READ_MS = 1_000
@@ -88,6 +93,7 @@ async function watchLaunch(
     verdict !== 'launched-agent' &&
     args.runtime.terminalCommandFinishedSince(ptyId, args.launchStartedAt)
   let seenAt: number | null = null
+  let shellSince: number | null = null
   let verdict: ForegroundVerdict = 'unknown'
   let interval = FIRST_READ_MS
   while (!signal.aborted && Date.now() < deadline) {
@@ -102,11 +108,18 @@ async function watchLaunch(
     }
     if (verdict === 'launched-agent') {
       seenAt ??= Date.now()
+      shellSince = null
       if (Date.now() - seenAt >= STARTUP_SURVIVAL_MS) {
         return RECEIVED
       }
+    } else if (verdict === 'shell' && seenAt !== null) {
+      shellSince ??= Date.now()
+      if (Date.now() - shellSince >= SHELL_RETURN_CONFIRM_MS) {
+        return EXITED
+      }
     }
-    await abortableDelay(Math.min(interval, Math.max(0, deadline - Date.now())), signal)
+    const confirming = shellSince !== null ? SHELL_RETURN_CONFIRM_MS : interval
+    await abortableDelay(Math.min(confirming, Math.max(0, deadline - Date.now())), signal)
     interval = Math.min(interval * 2, MAX_READ_MS)
   }
   if (signal.aborted) {

@@ -172,12 +172,14 @@ export type AgentLaunchPromptDisposal =
    *   pasted, the agent proven in front (macOS, Linux, SSH to them)       -> handed-to-terminal
    *   pasted on a Windows cmd or PowerShell pane, no shell in front       -> handed-to-terminal
    *   on the line, a caller that reads `unconfirmed`, a host that can see
-   *     the agent: once the launched agent has held the terminal 2 s or
-   *     its hook turn arrives, or when the host sees neither in 10 s     -> handed-to-terminal
+   *     the agent: once the launched agent is still seen in front 2 s
+   *     after it was first seen, or its hook turn arrives, or when the
+   *     host sees neither in 10 s                                        -> handed-to-terminal
    *   on the line, a Windows host (it can never see the agent in front)   -> handed-to-terminal
    *   on the line, a caller that cannot read `unconfirmed`                 -> handed-to-terminal
    *   the shell reports the line finished with the launched agent not in
-   *     front, before then; or a paste that found no agent               -> not-delivered
+   *     front, or holds the terminal again after the agent was seen,
+   *     before then; or a paste that found no agent                      -> not-delivered
    *   the host stopped mid-delivery (a replay of its record)             -> unconfirmed
    */
   | { outcome: 'handed-to-terminal' }

@@ -90,9 +90,18 @@ describe('proving a prompt the launch command carried', () => {
   // Why: Orca's codex wrapper runs `codex --help` first, and the shell holds the terminal between.
   it('never calls the shell between a probe and the agent an exit', async () => {
     const foreground = (ms: number) => (ms < 200 || ms >= 500 ? 'launched-agent' : 'shell')
-    await expect(prove(pane({ foreground }), 8_000)).resolves.toEqual({
-      outcome: 'handed-to-terminal'
-    })
+    const { result, elapsed } = await timed(prove(pane({ foreground }), 8_000))
+    expect(result).toEqual({ outcome: 'handed-to-terminal' })
+    expect(elapsed).toBeLessThan(3_500)
+  })
+
+  // Why: Orca's SSH zsh and fish send no finished-command report, so the shell back is all there is.
+  it('calls the shell back for a moment after the agent was seen an exit, with no report', async () => {
+    const { result, elapsed } = await timed(
+      prove(pane({ foreground: (ms) => (ms < 600 ? 'launched-agent' : 'shell') }), 8_000)
+    )
+    expect(result).toEqual({ outcome: 'not-delivered', reason: 'agent-exited' })
+    expect(elapsed).toBeLessThan(2_000)
   })
 
   // Why: a nested shell inside a running agent can report a finished command on the agent's pane.
