@@ -61,10 +61,17 @@ export function launchPromptNeedsPasteRefusal(
  * - `never`: none, so the line carries the prompt, as main did;
  * - `when-host-proves-agent`: #24257's guarded paste, refused where the host cannot prove the agent
  *   is in front;
+ * - `when-host-guards-paste`: `agent.launch`'s paste, whose guard also writes on a Windows cmd or
+ *   PowerShell pane unless the shell is proven alone in front. Only that guard may take a line a
+ *   Windows shell would damage; any other paste (a worktree follow-up, the window's) cannot;
  * - `once-agent-runs`: the desktop paste main uses for AI buttons and notes sends on every host,
  *   written once the agent's process owns the terminal.
  */
-export type LaunchPromptPaste = 'never' | 'when-host-proves-agent' | 'once-agent-runs'
+export type LaunchPromptPaste =
+  | 'never'
+  | 'when-host-proves-agent'
+  | 'when-host-guards-paste'
+  | 'once-agent-runs'
 
 export type CarriedPlanArgs = {
   agent: TuiAgent
@@ -133,11 +140,13 @@ export function carryLaunchPrompt<A extends CarriedPlanArgs, P extends { launchC
     plan,
     ...(args.paste === 'once-agent-runs' ? { unstageableLine: 'refuse' as const } : {})
   })
-  // Why a proven-alone shell: the guarded paste is refused only by a shell in front, so on a cmd or
-  // PowerShell pane it never types into one (QA: their startup-crash rows typed nothing).
+  // Why a proven-alone shell: `agent.launch`'s guard refuses only a shell in front, so on a cmd or
+  // PowerShell pane it never types into one (QA: their startup-crash rows typed nothing). No other
+  // paste has that guard, so it keeps #24257's rule.
   const pasteReachesAgent =
     args.paste === 'once-agent-runs' ||
-    (args.paste === 'when-host-proves-agent' && provesShellInFront(args.host))
+    (args.paste === 'when-host-proves-agent' && args.host.provesAgentInFront) ||
+    (args.paste === 'when-host-guards-paste' && provesShellInFront(args.host))
   const lineOrPaste = (): LaunchPromptPlan<P> | null => {
     const plan = pasteReachesAgent ? null : buildLine(args)
     return plan ? onLine(plan) : pasteAfterReady()

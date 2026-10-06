@@ -1,20 +1,22 @@
 /**
- * The one carry rule on a local Windows pane, per shell, from host facts alone (no caller says how).
- * A cmd or PowerShell pane can prove its shell alone in front, so a line it was not measured carrying
- * exactly is pasted once the agent runs (their startup-crash rows typed nothing). A Git Bash or WSL
+ * The one carry rule on a local Windows pane for agent.launch's guarded paste, per shell, from host
+ * facts. A cmd or PowerShell pane can prove its shell alone in front, so a line it was not measured
+ * carrying exactly is pasted once the agent runs (their startup-crash rows typed nothing). A Git Bash or WSL
  * pane cannot, so it never pastes: its POSIX line carries the prompt, and a file only past that.
  */
 
 import { describe, expect, it } from 'vitest'
 import { planLaunchPrompt } from './tui-agent-startup'
 import { describeLaunchHost, type WindowsPaneShell } from './launch-host'
+import type { LaunchPromptPaste } from './launch-prompt-carry'
 import type { TuiAgent } from './tui-agent'
 
 function plan(
   agent: TuiAgent,
   prompt: string,
   shell: WindowsPaneShell,
-  launchPlatform: NodeJS.Platform = 'win32'
+  launchPlatform: NodeJS.Platform = 'win32',
+  paste: LaunchPromptPaste = 'when-host-guards-paste'
 ) {
   return planLaunchPrompt({
     agent,
@@ -35,7 +37,7 @@ function plan(
       paired: false,
       windowsPaneShell: shell
     }),
-    paste: 'when-host-proves-agent'
+    paste
   })?.carry
 }
 
@@ -56,6 +58,17 @@ describe('a launch prompt on a local Windows pane', () => {
       }
     }
   )
+
+  // Why: only agent.launch's guard refuses a shell proven alone; a worktree follow-up or the window's
+  // paste writes without it, so a line a Windows shell would damage stays off its paste.
+  it('never moves a line onto a paste that lacks that guard', () => {
+    expect(
+      plan('claude', 'fix it\nthen push', 'cmd.exe', 'win32', 'when-host-proves-agent')
+    ).not.toBe('paste-after-ready')
+    expect(
+      plan('claude', UNCERTAIN_ON_POWERSHELL, 'pwsh.exe', 'win32', 'when-host-proves-agent')
+    ).not.toBe('paste-after-ready')
+  })
 
   it('pastes any multi-line prompt on cmd, which breaks the line at its first newline', () => {
     expect(plan('claude', 'fix it\nthen push', 'cmd.exe')).toBe('paste-after-ready')

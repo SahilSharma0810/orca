@@ -59,7 +59,7 @@ function carry(
     platform: 'win32',
     shell,
     host: windowsHost(windowsPowerShell, shell),
-    paste: 'when-host-proves-agent'
+    paste: 'when-host-guards-paste'
   })?.carry
 }
 
@@ -159,7 +159,7 @@ describe('an agent.launch prompt on a Windows host, per measured shell', () => {
         platform: 'win32',
         shell,
         host: windowsHost(windowsPowerShell, shell),
-        paste: 'when-host-proves-agent'
+        paste: 'when-host-guards-paste'
       })
       expect(planned?.carry).toBe(expected)
     }
@@ -190,7 +190,7 @@ describe('an agent.launch prompt on a Windows host, per measured shell', () => {
 
   it('pastes another control byte, never measured, where the shell is provable alone', () => {
     const planned = (
-      paste: 'once-agent-runs' | 'when-host-proves-agent',
+      paste: 'once-agent-runs' | 'when-host-guards-paste' | 'when-host-proves-agent',
       pane: WindowsPowerShell | null
     ) =>
       planLaunchPrompt({
@@ -203,9 +203,11 @@ describe('an agent.launch prompt on a Windows host, per measured shell', () => {
         paste
       })?.carry
     expect(planned('once-agent-runs', 'pwsh.exe')).toBe('paste-after-ready')
-    expect(planned('when-host-proves-agent', 'pwsh.exe')).toBe('paste-after-ready')
+    expect(planned('when-host-guards-paste', 'pwsh.exe')).toBe('paste-after-ready')
     // A PowerShell this Orca cannot name yet proves nothing, so main's typed line stays.
-    expect(planned('when-host-proves-agent', null)).toBe('on-line')
+    expect(planned('when-host-guards-paste', null)).toBe('on-line')
+    // A paste without agent.launch's guard never takes a Windows line.
+    expect(planned('when-host-proves-agent', 'pwsh.exe')).toBe('on-line')
   })
 
   // Why: an AI button's prompt was pasted on main, which ran the action on that paste. A Windows

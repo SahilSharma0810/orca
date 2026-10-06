@@ -149,6 +149,8 @@ export function agentLaunchSurfaceFactory(
         ...(startupPrompt
           ? {
               startupPrompt,
+              // This launch's own paste, guarded by the host facts below, takes what the line leaves.
+              startupPromptPaste: 'when-host-guards-paste',
               onStartupPromptCarry: (carried: boolean) => {
                 promptRodeLaunchCommand = carried
               }

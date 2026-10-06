@@ -152,6 +152,10 @@ describe('a prompt the host pastes on a Windows pane', () => {
 
     const result = await launch(runtime)
 
+    // Only this launch's guard may take a line a Windows shell would damage.
+    expect(runtime.createTerminal.mock.calls[0]?.[1]).toMatchObject({
+      startupPromptPaste: 'when-host-guards-paste'
+    })
     expect(sendTerminalAgentPrompt).toHaveBeenCalledOnce()
     expect(result.prompt).toEqual({ delivery: 'submit', outcome: 'handed-to-terminal' })
   })
