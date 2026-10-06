@@ -109,8 +109,9 @@ function launchParams(args: HostAgentLaunchArgs) {
 
 /**
  * The ledger is bookkeeping: a desktop past its per-caller row cap still gets its agent, through the
- * host's unrecorded launch into the same pane, so the tab stays where it is. That launch shows no tab
- * early; the host's reveal at spawn hands the pane over (`terminal-presentation-ipc-bridge`).
+ * host's unrecorded launch into the same pane. The refused launch already took back the tab it was
+ * shown, so the tab closes and returns at spawn (rare: 512 launches a day); the host's reveal at
+ * spawn hands the pane over (`terminal-presentation-ipc-bridge`).
  */
 async function launchWithoutRecord(
   args: HostAgentLaunchArgs,

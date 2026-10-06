@@ -12,6 +12,7 @@ import type { TuiAgent } from '../../../shared/tui-agent'
 import type { AgentPromptDelivery } from '../../../shared/agent-session-host-authority'
 import { translate } from '@/i18n/i18n'
 import { toAgentLaunchPreferences } from '../../../shared/agent-launch-preferences'
+import { showAgentLaunchPromptNotDeliveredNotice } from '@/lib/agent-launch-prompt-not-delivered-notice'
 
 function removeStaleLocalAgentTabsForWebHostLaunch(worktreeId: string): void {
   const state = useAppStore.getState()
@@ -118,6 +119,12 @@ export function launchAgentInWebHostTab(args: {
     useAppStore.getState().setActiveTabType('terminal', worktreeId)
     if (hasPrompt && promptDelivered) {
       onPromptDelivered?.()
+    }
+    // Why: a caller that acts on the result says nothing when it fails, and this paste names no
+    // reason; one notice keeps the button from going silent.
+    if (hasPrompt && !promptDelivered && promptDelivery === 'submit-after-ready') {
+      showAgentLaunchPromptNotDeliveredNotice({ agent, prompt })
+      return { delivered: false, failureNotified: true }
     }
     return { delivered: promptDelivered, failureNotified: false }
   }
