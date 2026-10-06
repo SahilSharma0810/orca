@@ -1,12 +1,12 @@
 /**
  * What became of a prompt an agent's launch command carried, on a host that can see the agent.
  *
- * The prompt is on the agent's command line, so the agent has it the moment it runs: the launched
- * agent itself in front (named on its command line, never any other process: a slow shell startup
- * runs its own), or the agent's own hook turn, is the answer. The pane's shell reporting the launch
- * line finished before either is an exit at startup, before the agent read it. With neither within
- * the budget, the prompt stays handed to the terminal, as on a host that cannot see: a slow read
- * never costs the caller its follow-up.
+ * The prompt is on the agent's command line, so the agent has it once it runs: the launched agent
+ * itself (named on its command line, never any other process: a slow shell startup runs its own)
+ * still in front a moment after it was first seen, or the agent's own hook turn, is the answer. The
+ * pane's shell reporting the launch line finished, or coming back after the agent was seen, is an
+ * exit at startup. With neither within the budget, the prompt stays handed to the terminal, as on a
+ * host that cannot see: a slow read never costs the caller its follow-up.
  */
 
 import type { AgentLaunchPromptDisposal } from '../../../../shared/agent-launch-intent'
@@ -26,6 +26,9 @@ const EXITED: AgentLaunchPromptDisposal = { outcome: 'not-delivered', reason: 'a
 
 /** Long enough for a slow shell to start and run the line; a follow-up waits on it at most this. */
 const PROOF_BUDGET_MS = 10_000
+/** How long the agent must stay in front once seen: a crash at startup, slowed by a loaded host,
+ *  can live long enough to be seen. */
+const STARTUP_SURVIVAL_MS = 2_000
 /** Each foreground read is one process scan of the pane, so they start often and back off. */
 const FIRST_READ_MS = 100
 const MAX_READ_MS = 1_000
@@ -74,22 +77,29 @@ async function watchLaunch(
 ): Promise<AgentLaunchPromptDisposal | null> {
   const deadline = Date.now() + timeoutMs
   const { ptyId } = args.runtime.getTerminalPromptRequestBinding(args.handle)
+  let seenAt: number | null = null
   let interval = FIRST_READ_MS
   while (!signal.aborted && Date.now() < deadline) {
+    // The shell's own report, so an agent that lived too briefly to be seen still counts as exited.
+    if (args.runtime.terminalCommandFinishedSince(ptyId, args.launchStartedAt)) {
+      return EXITED
+    }
     const verdict = await args.runtime
       .readTerminalForegroundVerdict(ptyId, args.agent)
       .catch(() => 'unknown' as const)
     if (verdict === 'launched-agent') {
-      return RECEIVED
-    }
-    // The shell's own report, so an agent that lived too briefly to be seen still counts as exited.
-    if (args.runtime.terminalCommandFinishedSince(args.handle, args.launchStartedAt)) {
+      seenAt ??= Date.now()
+      if (Date.now() - seenAt >= STARTUP_SURVIVAL_MS) {
+        return RECEIVED
+      }
+      interval = FIRST_READ_MS
+    } else if (verdict === 'shell' && seenAt !== null) {
       return EXITED
     }
     await abortableDelay(interval, signal)
     interval = Math.min(interval * 2, MAX_READ_MS)
   }
-  return null
+  return seenAt !== null ? RECEIVED : null
 }
 
 /** The first answer that is not null, or null once every one has settled without one. */

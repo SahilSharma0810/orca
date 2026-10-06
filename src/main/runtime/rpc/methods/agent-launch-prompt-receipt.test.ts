@@ -94,14 +94,14 @@ async function launch(runtime: AgentLaunchRuntimeStub, context = DESKTOP) {
 
 describe('a prompt the launch command carried', () => {
   // Why: the desktop runs its follow-up on this answer; a ready signal can be a whole answer away.
-  it('is handed over on a POSIX host as soon as the launched agent runs, ready or not', async () => {
+  it('is handed over on a POSIX host once the launched agent is past startup, ready or not', async () => {
     const { runtime } = withPane(runtimeStub({ settings: {} }), { readyAt: 60_000 })
     const started = Date.now()
 
     const result = await launch(runtime)
 
     expect(result.prompt).toEqual({ delivery: 'submit', outcome: 'handed-to-terminal' })
-    expect(Date.now() - started).toBeLessThan(1_000)
+    expect(Date.now() - started).toBeLessThan(3_000)
   })
 
   it('is not delivered on a POSIX host whose agent exited at startup', async () => {

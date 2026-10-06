@@ -151,9 +151,8 @@ export class OrcaRuntimeWithAgentPromptRequestCorrelation extends OrcaRuntimeWit
   }
 
   /** Whether the pane's shell reported a command finished since `since`: a launch line that ended. */
-  terminalCommandFinishedSince(handle: string, since: number): boolean {
-    const { ptyId } = this.getTerminalPromptRequestBinding(handle)
-    return (this.ptysById.get(ptyId)?.lastCommandFinishedAt ?? Number.NEGATIVE_INFINITY) >= since
+  terminalCommandFinishedSince(ptyId: string, since: number): boolean {
+    return (this.commandFinishedAtByPtyId.get(ptyId) ?? Number.NEGATIVE_INFINITY) >= since
   }
 
   private async observeLaunchHookTurn(

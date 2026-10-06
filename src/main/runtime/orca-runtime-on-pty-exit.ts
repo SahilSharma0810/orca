@@ -134,6 +134,7 @@ export class OrcaRuntimeWithOnPtyExit extends OrcaRuntimeWithOnClientDisconnecte
       this.clearWaitBlockedCheckState(ptyId)
       this.recentPtyPathCandidatesById.delete(ptyId)
       this.ptyOutputSequenceById.delete(ptyId)
+      this.commandFinishedAtByPtyId.delete(ptyId)
       this.providerSequenceInitializedPtys.delete(ptyId)
       this.providerSequenceOffsetByPtyId.delete(ptyId)
       this.providerSnapshotPreferredPtys.delete(ptyId)

@@ -236,4 +236,17 @@ describe('a carried prompt whose agent exits at startup', () => {
       }
     }
   )
+
+  // Why: a pane's first output can reach the host before its PTY record does.
+  it.skipIf(process.platform === 'win32')(
+    'is an exit when the shell reported its line finished before the host recorded the pane',
+    async () => {
+      const launchStartedAt = Date.now()
+      const store = makeStore()
+      const runtime = new OrcaRuntimeService(store, undefined, { getAgentStatusSnapshot: () => [] })
+      runtime.emitDaemonPtyTransientFact('pty-launch', { kind: 'command-finished', exitCode: 1 })
+      expect(runtime.terminalCommandFinishedSince('pty-launch', launchStartedAt)).toBe(true)
+      expect(runtime.terminalCommandFinishedSince('pty-launch', Date.now() + 1)).toBe(false)
+    }
+  )
 })

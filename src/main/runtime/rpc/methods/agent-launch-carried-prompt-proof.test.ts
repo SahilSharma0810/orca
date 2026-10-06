@@ -36,7 +36,7 @@ function pane(args: {
     })),
     readTerminalForegroundVerdict: vi.fn(async () => args.foreground(Date.now() - startedAt)),
     terminalCommandFinishedSince: vi.fn(
-      (_handle: string, since: number) =>
+      (_ptyId: string, since: number) =>
         args.finishedAt != null &&
         startedAt + args.finishedAt >= since &&
         Date.now() - startedAt >= args.finishedAt
@@ -66,13 +66,28 @@ function prove(runtime: ReturnType<typeof pane>, timeoutMs = 800, launchStartedA
 describe('proving a prompt the launch command carried', () => {
   // Why: the prompt is on its command line; waiting for it to be ready held follow-ups for a whole
   // first answer where hooks are off.
-  it('counts the launched agent the moment it runs, without waiting for it to be ready', async () => {
+  it('counts the launched agent once it stays in front past startup, without waiting for it to be ready', async () => {
     const { result, elapsed } = await timed(
-      prove(pane({ foreground: (ms) => (ms < 150 ? 'shell' : 'launched-agent') }), 5_000)
+      prove(pane({ foreground: (ms) => (ms < 150 ? 'shell' : 'launched-agent') }), 8_000)
     )
     expect(result).toEqual({ outcome: 'handed-to-terminal' })
-    expect(elapsed).toBeGreaterThanOrEqual(140)
-    expect(elapsed).toBeLessThan(150 + 400)
+    expect(elapsed).toBeGreaterThanOrEqual(150 + 2_000)
+    expect(elapsed).toBeLessThan(150 + 2_000 + 500)
+  })
+
+  // Why: on a loaded host a crash at startup lives long enough to be seen (QA: no notice in 70 s).
+  it('calls an agent seen in front an exit when its launch line finishes after', async () => {
+    const { result, elapsed } = await timed(
+      prove(pane({ foreground: () => 'launched-agent', finishedAt: 600 }), 8_000)
+    )
+    expect(result).toEqual({ outcome: 'not-delivered', reason: 'agent-exited' })
+    expect(elapsed).toBeLessThan(1_500)
+  })
+
+  it('calls an agent seen in front an exit when the shell comes back after it', async () => {
+    await expect(
+      prove(pane({ foreground: (ms) => (ms < 400 ? 'launched-agent' : 'shell') }), 8_000)
+    ).resolves.toEqual({ outcome: 'not-delivered', reason: 'agent-exited' })
   })
 
   // Why: a slow shell startup runs its own commands in front; none of them is the agent.

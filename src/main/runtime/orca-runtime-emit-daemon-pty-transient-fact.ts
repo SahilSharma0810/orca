@@ -74,12 +74,13 @@ export class OrcaRuntimeWithEmitDaemonPtyTransientFact extends OrcaRuntimeWithSc
     this.disposeHeadlessTerminal(ptyId)
   }
 
+  /** When each pane's shell last reported a command finished (OSC 133;D). Kept apart from the PTY
+   *  record, which a pane's first output can arrive before. */
+  protected readonly commandFinishedAtByPtyId = new Map<string, number>()
+
   /** The one shell fact that says a launch line ended: its command finished. */
   protected noteTerminalCommandFinished(ptyId: string): void {
-    const pty = this.ptysById.get(ptyId)
-    if (pty) {
-      pty.lastCommandFinishedAt = Date.now()
-    }
+    this.commandFinishedAtByPtyId.set(ptyId, Date.now())
   }
 
   /** Record one derived side-effect fact: batched per chunk while applying
