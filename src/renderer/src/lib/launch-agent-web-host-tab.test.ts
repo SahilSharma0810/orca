@@ -26,7 +26,12 @@ function launch(promptDelivery: 'auto-submit' | 'submit-after-ready') {
     agent: 'claude',
     worktreeId: 'wt-1',
     environmentId: 'env-1',
-    startupPlan: { launchCommand: 'claude', expectedProcess: 'claude', followupPrompt: null },
+    startupPlan: {
+      agent: 'claude',
+      launchCommand: 'claude',
+      expectedProcess: 'claude',
+      launchConfig: { agentArgs: '', agentEnv: {} }
+    },
     prompt: 'resolve these threads',
     promptDelivery,
     pastePromptAfterReady: 'resolve these threads',
