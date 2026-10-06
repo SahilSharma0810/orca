@@ -121,7 +121,7 @@ export function publishAgentLaunchTab(
   }
   if (request.viewer === 'focus-window') {
     // After the tab lands: activating prunes the workspace's empty groups, the requested split too.
-    activateTerminalInitiatedWorktree(useAppStore.getState(), worktreeId)
+    activateTerminalInitiatedWorktree(useAppStore.getState(), worktreeId, [tab.id])
   }
   const current = useAppStore.getState()
   // The desktop's own launch stays in its workspace: the window follows only if it is still there.

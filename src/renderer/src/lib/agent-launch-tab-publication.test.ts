@@ -221,6 +221,21 @@ describe('placement', () => {
   })
 })
 
+describe('a focused launch into a workspace with no live terminal', () => {
+  it('is the agent starting, not a wake: its first bind moves the workspace up in Recent', () => {
+    store.getState().setActiveWorktree(OTHER_WT)
+    publishAgentLaunchTab(request({ viewer: 'focus-window' }))
+    const tab = store.getState().tabsByWorktree[WT]?.find((candidate) => candidate.id === TAB_ID)
+    expect(tab?.pendingActivationSpawn).toBeUndefined()
+    expect(tab?.generation).toBeUndefined()
+
+    const epoch = store.getState().sortEpoch
+    store.getState().updateTabPtyId(TAB_ID, 'pty-agent-1')
+
+    expect(store.getState().sortEpoch).toBe(epoch + 1)
+  })
+})
+
 describe('whose view moves', () => {
   it('none: the window stays where it is', () => {
     const before = store.getState().activeTabIdByWorktree[WT]
