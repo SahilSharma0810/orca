@@ -39,6 +39,11 @@ const WINDOWS_POWERSHELL: LaunchHost = {
   windowsPaneShell: 'pwsh.exe'
 }
 const WINDOWS_GIT_BASH: LaunchHost = { ...WINDOWS_POWERSHELL, windowsPaneShell: 'git-bash' }
+const WINDOWS_POWERSHELL_NOT_YET_KNOWN: LaunchHost = {
+  ...WINDOWS_POWERSHELL,
+  windowsPaneShell: null,
+  windowsPowerShellPane: true
+}
 
 function withPane(
   runtime: AgentLaunchRuntimeStub,
@@ -143,6 +148,22 @@ describe('a prompt the host pastes on a Windows pane', () => {
   it('is pasted on PowerShell unless its shell is proven in front, and handed over', async () => {
     const { runtime, sendTerminalAgentPrompt } = withPane(
       runtimeStub({ settings: {}, lineCarriesPrompt: false, launchHost: WINDOWS_POWERSHELL })
+    )
+
+    const result = await launch(runtime)
+
+    expect(sendTerminalAgentPrompt).toHaveBeenCalledOnce()
+    expect(result.prompt).toEqual({ delivery: 'submit', outcome: 'handed-to-terminal' })
+  })
+
+  // Why: either PowerShell proves its shell alone; which one only changes how a line is quoted.
+  it('is pasted on a PowerShell whose implementation is not yet known', async () => {
+    const { runtime, sendTerminalAgentPrompt } = withPane(
+      runtimeStub({
+        settings: {},
+        lineCarriesPrompt: false,
+        launchHost: WINDOWS_POWERSHELL_NOT_YET_KNOWN
+      })
     )
 
     const result = await launch(runtime)

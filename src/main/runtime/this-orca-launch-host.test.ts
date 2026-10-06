@@ -69,6 +69,30 @@ describe('the PowerShell a launch this Orca runs lands in', () => {
     expect(isPwshAvailableAsync).toHaveBeenCalledOnce()
   })
 
+  // Why: a cold pwsh.exe can outlast the probe (QA: Qwen's paste refused 3/3 with the probe in place).
+  it('knows a pane is PowerShell even when the probe gives no answer', async () => {
+    onPlatform('win32')
+    vi.mocked(cachedPwshAvailability).mockReturnValue(null)
+    vi.mocked(isPwshAvailableAsync).mockResolvedValue(false)
+    const host = (settings: Parameters<typeof thisOrcaLaunchHost>[0]['settings']) =>
+      probedThisOrcaLaunchHost({ launchPlatform: 'win32', isRemote: false, settings })
+
+    await expect(host({ terminalWindowsShell: 'powershell.exe' })).resolves.toMatchObject({
+      windowsPaneShell: null,
+      windowsPowerShellPane: true
+    })
+    expect(await host({ terminalWindowsShell: 'cmd.exe' })).not.toHaveProperty(
+      'windowsPowerShellPane'
+    )
+    expect(
+      thisOrcaLaunchHost({
+        launchPlatform: 'win32',
+        isRemote: true,
+        settings: { terminalWindowsShell: 'powershell.exe' }
+      })
+    ).not.toHaveProperty('windowsPowerShellPane')
+  })
+
   it('knows none for a launch on another platform', () => {
     onPlatform('darwin')
     vi.mocked(cachedPwshAvailability).mockReturnValue(true)

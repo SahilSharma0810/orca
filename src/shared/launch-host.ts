@@ -32,6 +32,9 @@ export type LaunchHost = {
    *  how `"` and a trailing `\` reach the agent. Null where this Orca does not choose it (an SSH or
    *  paired host), or has not yet learned whether pwsh is installed. */
   windowsPaneShell: WindowsPaneShell | null
+  /** A local pane spawned as PowerShell before this Orca learned which one (`windowsPaneShell` is
+   *  null then). Its quoting is unknown, but either PowerShell proves its shell alone. */
+  windowsPowerShellPane?: boolean
 }
 
 /**
@@ -97,6 +100,8 @@ export function describeLaunchHost(args: {
   paired: boolean
   /** `spawnedWindowsShell` on this machine, which a launch elsewhere does not use. */
   windowsPaneShell?: WindowsPaneShell | null
+  /** The pane is PowerShell, though not yet which one. */
+  windowsPowerShellPane?: boolean
   /** Whether the host can write the folder its staged lines and launch files go in. */
   writesLaunchArtifacts?: boolean
 }): LaunchHost {
@@ -109,6 +114,12 @@ export function describeLaunchHost(args: {
       !(args.isRemote && args.launchPlatform === 'win32') &&
       args.writesLaunchArtifacts !== false,
     windowsPaneShell:
-      runsElsewhere || args.launchPlatform !== 'win32' ? null : (args.windowsPaneShell ?? null)
+      runsElsewhere || args.launchPlatform !== 'win32' ? null : (args.windowsPaneShell ?? null),
+    ...(!runsElsewhere &&
+    args.launchPlatform === 'win32' &&
+    !args.windowsPaneShell &&
+    args.windowsPowerShellPane
+      ? { windowsPowerShellPane: true }
+      : {})
   }
 }

@@ -26,20 +26,35 @@ type ThisOrcaLaunchHostArgs = {
 /** The host facts for a launch this Orca runs itself, locally or over its own SSH connection. */
 export function thisOrcaLaunchHost(args: ThisOrcaLaunchHostArgs): LaunchHost {
   const local = !args.isRemote && args.launchPlatform === 'win32' && process.platform === 'win32'
+  const windowsPaneShell = local
+    ? spawnedWindowsShell({
+        settings: args.settings,
+        windowsShellOverride: args.windowsShellOverride,
+        pwshAvailable: cachedPwshAvailability()
+      })
+    : null
   return describeLaunchHost({
     launchPlatform: args.launchPlatform,
     isRemote: args.isRemote,
     hostPlatform: process.platform,
     paired: false,
-    windowsPaneShell: local
-      ? spawnedWindowsShell({
-          settings: args.settings,
-          windowsShellOverride: args.windowsShellOverride,
-          pwshAvailable: cachedPwshAvailability()
-        })
-      : null,
+    windowsPaneShell,
+    // Why: the probe can time out (a cold pwsh.exe), and the paste guard needs only to know it is
+    // PowerShell, not which one (QA: every paste refused while it was unknown).
+    windowsPowerShellPane: local && windowsPaneShell === null && powerShellAwaitsProbe(args),
     writesLaunchArtifacts: writesLaunchArtifacts(args)
   })
+}
+
+/** Whether the pane is PowerShell and only the pwsh.exe probe can tell which one. */
+function powerShellAwaitsProbe(args: ThisOrcaLaunchHostArgs): boolean {
+  const shellFor = (pwshAvailable: boolean | null) =>
+    spawnedWindowsShell({
+      settings: args.settings,
+      windowsShellOverride: args.windowsShellOverride,
+      pwshAvailable
+    })
+  return shellFor(null) === null && shellFor(true) !== null
 }
 
 /**
@@ -67,13 +82,7 @@ async function probePwshBeforePlanning(args: ThisOrcaLaunchHostArgs): Promise<vo
   if (args.isRemote || args.launchPlatform !== 'win32' || process.platform !== 'win32') {
     return
   }
-  const shellFor = (pwshAvailable: boolean | null) =>
-    spawnedWindowsShell({
-      settings: args.settings,
-      windowsShellOverride: args.windowsShellOverride,
-      pwshAvailable
-    })
-  if (shellFor(null) === null && shellFor(true) !== null && cachedPwshAvailability() === null) {
+  if (powerShellAwaitsProbe(args) && cachedPwshAvailability() === null) {
     await isPwshAvailableAsync()
   }
 }

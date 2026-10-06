@@ -216,7 +216,11 @@ export function agentLaunchSurfaceFactory(
 /** A Windows pane whose shell alone in front can be proven (cmd, PowerShell); never a POSIX one,
  *  whose paste needs the agent itself proven. */
 function windowsPaneProvesShell(host: LaunchHost | undefined): boolean {
-  return host !== undefined && !host.provesAgentInFront && provesShellInFront(host)
+  return (
+    host !== undefined &&
+    !host.provesAgentInFront &&
+    (provesShellInFront(host) || host.windowsPowerShellPane === true)
+  )
 }
 
 function requireInstalledHost(): StructuredAgentSessionHost {
