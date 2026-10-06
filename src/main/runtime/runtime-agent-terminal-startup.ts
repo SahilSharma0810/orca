@@ -75,6 +75,7 @@ export async function buildRuntimeAgentTerminalStartupOptions(
     }
     return opts
   }
+  opts.onLaunchHost?.(host)
   let startupPlan
   let launchFile
   switch (planned.carry) {
@@ -83,12 +84,12 @@ export async function buildRuntimeAgentTerminalStartupOptions(
       break
     case 'on-line':
       startupPlan = planned.plan
-      opts.onStartupPromptCarry?.(true, host)
+      opts.onStartupPromptCarry?.(true)
       break
     case 'launch-file':
       startupPlan = planned.plan
       launchFile = planned.launchFile
-      opts.onStartupPromptCarry?.(true, host)
+      opts.onStartupPromptCarry?.(true)
       break
     case 'paste-after-ready':
       if (!opts.onStartupPromptCarry) {
@@ -96,7 +97,7 @@ export async function buildRuntimeAgentTerminalStartupOptions(
         throw new Error(launchPromptNeedsPasteRefusal(agent, 'terminal'))
       }
       startupPlan = planned.cleanPlan
-      opts.onStartupPromptCarry(false, host)
+      opts.onStartupPromptCarry(false)
       break
   }
 

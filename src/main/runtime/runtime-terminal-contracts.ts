@@ -58,8 +58,10 @@ export type TerminalCreateOptions = {
    */
   startupPrompt?: string
   /** Main-internal: whether `startupPrompt` rode the launch command. Called once the plan is built. */
-  /** `host`: the launch host's facts the carry was decided by. */
-  onStartupPromptCarry?: (carried: boolean, host?: LaunchHost) => void
+  onStartupPromptCarry?: (carried: boolean) => void
+  /** Main-internal: the host facts `startupAgent`'s terminal was planned by, reported for every agent
+   *  launch, with a prompt or without, so a later paste is guarded by the same facts. */
+  onLaunchHost?: (host: LaunchHost) => void
   /** Main-internal: the caller's paste for an uncarried `startupPrompt`; defaults to #24257's guarded
    *  paste when `onStartupPromptCarry` is set. */
   startupPromptPaste?: LaunchPromptPaste

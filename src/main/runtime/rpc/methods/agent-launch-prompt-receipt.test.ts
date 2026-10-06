@@ -89,8 +89,8 @@ function withPane(
   }
 }
 
-async function launch(runtime: AgentLaunchRuntimeStub, context = DESKTOP) {
-  const parsed = AGENT_LAUNCH.params.safeParse(LAUNCH)
+async function launch(runtime: AgentLaunchRuntimeStub, context = DESKTOP, agent = LAUNCH.agent) {
+  const parsed = AGENT_LAUNCH.params.safeParse({ ...LAUNCH, agent })
   if (!parsed.success) {
     throw new Error(parsed.error.issues[0]?.message ?? 'invalid')
   }
@@ -152,6 +152,20 @@ describe('a prompt the host pastes on a Windows pane', () => {
 
     const result = await launch(runtime)
 
+    expect(sendTerminalAgentPrompt).toHaveBeenCalledOnce()
+    expect(result.prompt).toEqual({ delivery: 'submit', outcome: 'handed-to-terminal' })
+  })
+
+  // Why: its prompt is never offered to the launch line, yet its paste is guarded by the host's facts
+  // like any other (QA: refused 3/3 on PowerShell while those facts went unrecorded).
+  it('is pasted on PowerShell for an agent that takes its prompt only after it starts', async () => {
+    const { runtime, sendTerminalAgentPrompt } = withPane(
+      runtimeStub({ settings: {}, launchHost: WINDOWS_POWERSHELL })
+    )
+
+    const result = await launch(runtime, DESKTOP, 'qwen-code')
+
+    expect(runtime.createTerminal.mock.calls[0]?.[1]).not.toHaveProperty('startupPrompt')
     expect(sendTerminalAgentPrompt).toHaveBeenCalledOnce()
     expect(result.prompt).toEqual({ delivery: 'submit', outcome: 'handed-to-terminal' })
   })

@@ -112,15 +112,17 @@ describe('a terminal create that is handed a launch prompt', () => {
   it('starts an agent clean and says so when its prompt needs a file it is not known to read', async () => {
     const { runtime, spawn } = runtimeWithAgentLaunch()
     const onStartupPromptCarry = vi.fn()
+    const onLaunchHost = vi.fn()
 
     await runtime.createTerminal('id:wt-1', {
       startupAgent: 'gemini',
       startupPrompt: 'x'.repeat(MAX_LINE_PROMPT_BYTES + 1),
-      onStartupPromptCarry
+      onStartupPromptCarry,
+      onLaunchHost
     })
 
-    expect(onStartupPromptCarry).toHaveBeenCalledExactlyOnceWith(
-      false,
+    expect(onStartupPromptCarry).toHaveBeenCalledExactlyOnceWith(false)
+    expect(onLaunchHost).toHaveBeenCalledExactlyOnceWith(
       expect.objectContaining({ takesLaunchFile: true })
     )
     expect(spawn.mock.calls[0]?.[0]?.launchFile).toBeUndefined()
@@ -139,10 +141,7 @@ describe('a terminal create that is handed a launch prompt', () => {
       onStartupPromptCarry
     })
 
-    expect(onStartupPromptCarry).toHaveBeenCalledExactlyOnceWith(
-      false,
-      expect.objectContaining({ takesLaunchFile: true })
-    )
+    expect(onStartupPromptCarry).toHaveBeenCalledExactlyOnceWith(false)
     expect(spawn.mock.calls[0]?.[0]?.launchFile).toBeUndefined()
     expect(spawnedCommand(spawn)).not.toContain('x'.repeat(100))
   })
@@ -152,6 +151,7 @@ describe('a terminal create that is handed a launch prompt', () => {
   it('leaves a brief to main’s paste where this host cannot write its staging folder', async () => {
     const { runtime, spawn } = runtimeWithAgentLaunch()
     const onStartupPromptCarry = vi.fn()
+    const onLaunchHost = vi.fn()
     const brief = Array.from({ length: 12 }, (_, i) => `brief line ${i}`.padEnd(400, '.')).join(
       '\n'
     )
@@ -161,15 +161,16 @@ describe('a terminal create that is handed a launch prompt', () => {
         startupAgent: 'claude',
         startupPrompt: brief,
         startupPromptPaste: 'once-agent-runs',
-        onStartupPromptCarry
+        onStartupPromptCarry,
+        onLaunchHost
       })
     } finally {
       launchArtifacts.writable = true
     }
 
-    expect(onStartupPromptCarry).toHaveBeenCalledExactlyOnceWith(
-      false,
-      // The facts it planned by go with it, so the launch's paste and receipt read the same host.
+    expect(onStartupPromptCarry).toHaveBeenCalledExactlyOnceWith(false)
+    // The facts it planned by are reported, so the launch's paste and receipt read the same host.
+    expect(onLaunchHost).toHaveBeenCalledExactlyOnceWith(
       expect.objectContaining({ takesLaunchFile: false })
     )
     expect(spawn.mock.calls[0]?.[0]?.launchFile).toBeUndefined()
@@ -198,8 +199,18 @@ describe('a terminal create that is handed a launch prompt', () => {
       onStartupPromptCarry
     })
 
-    expect(onStartupPromptCarry).toHaveBeenCalledExactlyOnceWith(
-      true,
+    expect(onStartupPromptCarry).toHaveBeenCalledExactlyOnceWith(true)
+  })
+
+  // Why: an agent that takes its prompt only after it starts is pasted into by these facts' guard;
+  // with none reported, a Windows PowerShell pane refused every paste (QA: Qwen Code 3/3).
+  it('reports the facts it planned an agent by when no prompt rides its line', async () => {
+    const { runtime } = runtimeWithAgentLaunch()
+    const onLaunchHost = vi.fn()
+
+    await runtime.createTerminal('id:wt-1', { startupAgent: 'qwen-code', onLaunchHost })
+
+    expect(onLaunchHost).toHaveBeenCalledExactlyOnceWith(
       expect.objectContaining({ takesLaunchFile: true })
     )
   })

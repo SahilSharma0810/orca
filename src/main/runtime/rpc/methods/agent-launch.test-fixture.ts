@@ -62,8 +62,14 @@ function reportPromptCarry(
   offered: unknown
 ): void {
   if (typeof report === 'function' && offered) {
+    report(options.lineCarriesPrompt ?? true)
+  }
+}
+
+/** As the runtime reports the facts every agent terminal is planned by. */
+function reportLaunchHost(options: AgentLaunchRuntimeStubOptions, report: unknown): void {
+  if (typeof report === 'function') {
     report(
-      options.lineCarriesPrompt ?? true,
       options.launchHost ?? {
         paired: false,
         provesAgentInFront: true,
@@ -134,6 +140,7 @@ export function runtimeStub(options: AgentLaunchRuntimeStubOptions = {}) {
       if (options.terminalPaneAlreadyLive && createOptions?.requireFreshPane === true) {
         throw new AgentLaunchPaneAlreadyLiveError()
       }
+      reportLaunchHost(options, createOptions?.onLaunchHost)
       reportPromptCarry(options, createOptions?.onStartupPromptCarry, createOptions?.startupPrompt)
       if (options.terminalPaneKey) {
         handlesByPaneKey.set(options.terminalPaneKey, 'term_1')

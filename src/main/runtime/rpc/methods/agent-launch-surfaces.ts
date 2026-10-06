@@ -149,12 +149,16 @@ export function agentLaunchSurfaceFactory(
         ...(startupPrompt
           ? {
               startupPrompt,
-              onStartupPromptCarry: (carried: boolean, host?: LaunchHost) => {
+              onStartupPromptCarry: (carried: boolean) => {
                 promptRodeLaunchCommand = carried
-                launchHost = host ?? null
               }
             }
           : {}),
+        // Every terminal agent's, not only one offered a prompt: an agent that takes its prompt after
+        // it starts (Qwen Code) is pasted into, by these facts' guard (QA: refused on PowerShell).
+        onLaunchHost: (host: LaunchHost) => {
+          launchHost = host
+        },
         ...(agentArgs !== undefined ? { agentArgs } : {}),
         ...(cwd ? { cwd } : {}),
         // The model the user picked outranks configured args here too, as it does on a chat.
