@@ -242,7 +242,8 @@ describe('a carried prompt whose agent exits at startup', () => {
     'is an exit when the shell reported its line finished before the host recorded the pane',
     async () => {
       const launchStartedAt = Date.now()
-      const store = makeStore()
+      // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: the shared store fixture implements only what a launch reads.
+      const store = makeStore() as never
       const runtime = new OrcaRuntimeService(store, undefined, { getAgentStatusSnapshot: () => [] })
       runtime.emitDaemonPtyTransientFact('pty-launch', { kind: 'command-finished', exitCode: 1 })
       expect(runtime.terminalCommandFinishedSince('pty-launch', launchStartedAt)).toBe(true)
