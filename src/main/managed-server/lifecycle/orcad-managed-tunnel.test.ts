@@ -1,3 +1,4 @@
+import { withRuntimeSshTunnelLocalPort } from '../../../shared/runtime-environment-managed-tunnel-port'
 import { describe, expect, it, vi } from 'vitest'
 import {
   createEnvironmentFromPairingOffer,
@@ -823,4 +824,102 @@ describe('OrcadManagedTunnelManager bound port', () => {
     })
     expect(state.addForward).not.toHaveBeenCalled()
   })
+})
+
+describe('managed tunnel local-port recovery ownership', () => {
+  it('verifies the replacement endpoint and reuses its persisted binding', async () => {
+    let current = createEnvironment('orcadDeployment')
+    const verified: number[] = []
+    const state = setup(
+      {},
+      {
+        resolveRemotePort: async () => 6768,
+        verifyIdentity: async (environment) => {
+          verified.push(environment.orcadDeployment?.localPort ?? 0)
+          expect(environment.endpoints[0]?.endpoint).toBe('ws://127.0.0.1:41000/')
+          return { verdict: 'verified' }
+        }
+      }
+    )
+    state.addForward.mockRejectedValueOnce(new Error('busy', { cause: 'EADDRINUSE' }))
+    state.addForward.mockImplementation(async (_id, _connection, port, _host, remotePort) => ({
+      id: 'replacement',
+      localPort: port || 41000,
+      remotePort
+    }))
+    const replaceLocalPort = vi.fn((expected: KnownRuntimeEnvironment, port: number) => {
+      expect(verified).toEqual([41000])
+      current = { ...withRuntimeSshTunnelLocalPort(expected, port), pairingRevision: 2 }
+      return current
+    })
+    await state.manager.ensure(current, () => current, true, { replaceLocalPort })
+    await state.manager.ensure(current, () => current, true, { replaceLocalPort })
+    expect(state.addForward).toHaveBeenCalledTimes(2)
+    expect(replaceLocalPort).toHaveBeenCalledOnce()
+    expect(state.ensureServing).toHaveBeenCalledWith(
+      expect.objectContaining({ environment: current })
+    )
+  })
+
+  it('closes a verified candidate whose pairing was replaced during verification', async () => {
+    let current = createEnvironment('orcadDeployment')
+    const state = setup(
+      {},
+      {
+        resolveRemotePort: async () => 6768,
+        verifyIdentity: async () => {
+          current = { ...current, pairingRevision: 2 }
+          return { verdict: 'verified' }
+        }
+      }
+    )
+    state.addForward.mockRejectedValueOnce(new Error('busy', { cause: 'EADDRINUSE' }))
+    state.addForward.mockResolvedValue({ id: 'replacement', localPort: 41000, remotePort: 6768 })
+    const replaceLocalPort = vi.fn()
+    await expect(
+      state.manager.ensure(current, () => current, true, { replaceLocalPort })
+    ).rejects.toThrow('superseded')
+    expect(replaceLocalPort).not.toHaveBeenCalled()
+    expect(state.removeForwardAndWait).toHaveBeenCalledWith('replacement')
+  })
+})
+
+it('rebuilds from the port saved by an overlapping ensure', async () => {
+  let current = createEnvironment('orcadDeployment')
+  const original = current
+  let release: (() => void) | undefined
+  const wait = new Promise<void>((resolve) => {
+    release = resolve
+  })
+  let verifying = false
+  const state = setup(
+    {},
+    {
+      resolveRemotePort: async () => 6768,
+      verifyIdentity: async () => {
+        verifying = true
+        await wait
+        return { verdict: 'verified' }
+      }
+    }
+  )
+  state.addForward.mockRejectedValueOnce(new Error('busy', { cause: 'EADDRINUSE' }))
+  state.addForward.mockImplementation(async (_id, _connection, port, _host, remotePort) => ({
+    id: `replacement-${state.addForward.mock.calls.length}`,
+    localPort: port || 41000,
+    remotePort
+  }))
+  const recovery = {
+    replaceLocalPort: (expected: KnownRuntimeEnvironment, port: number) => {
+      current = { ...withRuntimeSshTunnelLocalPort(expected, port), pairingRevision: 2 }
+      return current
+    }
+  }
+  const ensure = state.manager.ensure(original, () => current, true, recovery)
+  await vi.waitFor(() => expect(verifying).toBe(true))
+  const rebuild = state.manager.rebuild(original, () => current, recovery)
+  release?.()
+  await ensure
+  await expect(rebuild).resolves.toBeUndefined()
+  expect(state.addForward.mock.calls.map((call) => call[2])).toEqual([46768, 0, 41000])
 })

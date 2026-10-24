@@ -221,3 +221,82 @@ describe('environmentForwardChecks', () => {
     warn.mockRestore()
   })
 })
+
+describe('managed tunnel busy-port recovery', () => {
+  const busy = () => new Error('Local port is unavailable', { cause: 'EADDRINUSE' })
+
+  it('retries a busy saved port once and saves the verified replacement', async () => {
+    const state = setup([], 6768)
+    state.addForward.mockRejectedValueOnce(busy())
+    const save = vi.fn()
+    expect(
+      await forwardToVerifiedOrcad({ ...state.args, onLocalPortRecovered: save })
+    ).toMatchObject({ localPort: 41000 })
+    expect(state.addForward.mock.calls.map((call) => call[2])).toEqual([46768, 0])
+    expect(state.verify).toHaveBeenCalledWith(41000)
+    expect(save).toHaveBeenCalledWith(41000)
+  })
+
+  it('bounds recovery when the replacement port also fails to bind', async () => {
+    const state = setup([], 6768)
+    state.addForward.mockRejectedValue(busy())
+    const save = vi.fn()
+    await expect(
+      forwardToVerifiedOrcad({ ...state.args, onLocalPortRecovered: save })
+    ).rejects.toThrow('unavailable')
+    expect(state.addForward).toHaveBeenCalledTimes(2)
+    expect(save).not.toHaveBeenCalled()
+  })
+
+  it('does not retry a permission failure', async () => {
+    const state = setup([], 6768)
+    state.addForward.mockRejectedValueOnce(new Error('permission denied', { cause: 'EACCES' }))
+    await expect(
+      forwardToVerifiedOrcad({ ...state.args, onLocalPortRecovered: vi.fn() })
+    ).rejects.toThrow('permission denied')
+    expect(state.addForward).toHaveBeenCalledOnce()
+  })
+
+  it.each(['foreign', 'unpaired', 'unreachable'] as const)(
+    'does not save an %s candidate',
+    async (verdict) => {
+      const state = setup([{ verdict, detail: 'not verified' }], 6768)
+      state.addForward.mockRejectedValueOnce(busy())
+      const save = vi.fn()
+      await expect(
+        forwardToVerifiedOrcad({ ...state.args, onLocalPortRecovered: save })
+      ).rejects.toThrow()
+      expect(state.removeForwardAndWait).toHaveBeenCalledOnce()
+      expect(save).not.toHaveBeenCalled()
+    }
+  )
+
+  it('closes the replacement forward if persistence fails', async () => {
+    const state = setup([], 6768)
+    state.addForward.mockRejectedValueOnce(busy())
+    await expect(
+      forwardToVerifiedOrcad({
+        ...state.args,
+        onLocalPortRecovered: () => {
+          throw new Error('disk full')
+        }
+      })
+    ).rejects.toThrow('disk full')
+    expect(state.removeForwardAndWait).toHaveBeenCalledOnce()
+  })
+
+  it('does not start a replacement when the request loses ownership', async () => {
+    const state = setup([], 6768)
+    state.addForward.mockRejectedValueOnce(busy())
+    const save = vi.fn()
+    await expect(
+      forwardToVerifiedOrcad({
+        ...state.args,
+        stillCurrent: () => false,
+        onLocalPortRecovered: save
+      })
+    ).resolves.toBeNull()
+    expect(state.addForward).toHaveBeenCalledOnce()
+    expect(save).not.toHaveBeenCalled()
+  })
+})

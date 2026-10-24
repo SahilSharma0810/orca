@@ -7,6 +7,7 @@ import { RuntimeEnvironmentReconciliationRecordSchema } from './runtime-environm
 import { readEnvironmentStoreRecords } from './runtime-environment-store-records'
 import {
   KnownRuntimeEnvironmentSchema,
+  getPreferredLoopbackRuntimePort,
   RuntimeAccessEndpointSchema,
   RuntimeSshAccessLinkSchema,
   RuntimeSshAccessOperationSchema,
@@ -168,11 +169,29 @@ export function overlayRuntimeEnvironmentSidecar(
     ...(entry.pendingSshAccessOperation
       ? { pendingSshAccessOperation: entry.pendingSshAccessOperation }
       : {}),
-    ...(entry.orcadDeployment ? { orcadDeployment: entry.orcadDeployment } : {}),
+    ...(currentOrcadDeployment(environment, entry)
+      ? { orcadDeployment: currentOrcadDeployment(environment, entry) }
+      : {}),
     ...(entry.orcadMigratedAt ? { orcadMigratedAt: entry.orcadMigratedAt } : {}),
     ...(entry.reconciliation ? { reconciliation: entry.reconciliation } : {})
   })
   return overlaid.success ? overlaid.data : base
+}
+
+function currentOrcadDeployment(
+  environment: PersistedRuntimeEnvironment,
+  entry: RuntimeEnvironmentSidecarEntry
+) {
+  const binding = runtimeEnvironmentSidecarBinding(environment)
+  const localPort = getPreferredLoopbackRuntimePort(environment)
+  // Pending bindings survive older sidecar writers, unlike a new recovery-only field.
+  return entry.orcadDeployment &&
+    localPort !== null &&
+    entry.pendingBinding?.createdAt === binding.createdAt &&
+    entry.pendingBinding.pairingRevision === binding.pairingRevision &&
+    entry.pendingBinding.preferredEndpointId === binding.preferredEndpointId
+    ? { ...entry.orcadDeployment, localPort }
+    : entry.orcadDeployment
 }
 
 /**
@@ -225,7 +244,9 @@ export function writeRuntimeEnvironmentSidecarEntry(
       ...state,
       binding: runtimeEnvironmentSidecarBinding(environment),
       ...(pendingEnvironment
-        ? { pendingBinding: runtimeEnvironmentSidecarBinding(pendingEnvironment) }
+        ? {
+            pendingBinding: runtimeEnvironmentSidecarBinding(pendingEnvironment)
+          }
         : {})
     })
   }
@@ -254,5 +275,7 @@ export function readCurrentRuntimeEnvironmentSidecarEntry(
     )
   }
   const entry = sidecar.entries[environment.id]
-  return entry && isCurrentEntry(environment, entry) ? entry : undefined
+  return entry && isCurrentEntry(environment, entry)
+    ? { ...entry, orcadDeployment: currentOrcadDeployment(environment, entry) }
+    : undefined
 }

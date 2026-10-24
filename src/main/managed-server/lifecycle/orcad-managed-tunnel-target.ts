@@ -1,3 +1,4 @@
+import { withRuntimeSshTunnelLocalPort } from '../../../shared/runtime-environment-managed-tunnel-port'
 import {
   getRuntimeSshAccess,
   type KnownRuntimeEnvironment
@@ -67,6 +68,7 @@ type VerifiedOrcadForwardArgs = {
   /** Omit when the caller validates identity itself. */
   verify?: (localPort: number) => Promise<OrcadTunnelIdentity>
   stillCurrent: () => boolean
+  onLocalPortRecovered?: (localPort: number) => void
 }
 
 export type OrcadTunnelStartChecks = Pick<
@@ -87,7 +89,8 @@ export async function environmentForwardChecks(
       await targeting.wakeStoppedServer?.(input)
       return targeting.resolveRemotePort(input)
     },
-    verify: () => targeting.verifyIdentity(input.environment)
+    verify: (localPort) =>
+      targeting.verifyIdentity(withRuntimeSshTunnelLocalPort(input.environment, localPort))
   }
 }
 
@@ -96,19 +99,59 @@ export async function forwardToVerifiedOrcad(
   args: VerifiedOrcadForwardArgs
 ): Promise<PortForwardEntry | null> {
   let remotePort = args.remotePort
+  let localPort = args.localPort
+  let recoveredLocalPort = false
   for (let attempt = 0; ; attempt++) {
-    const forward = await addCurrentForward(args, remotePort)
+    let forward: PortForwardEntry | null
+    try {
+      forward = await addCurrentForward({ ...args, localPort }, remotePort)
+    } catch (error) {
+      if (!args.stillCurrent()) {
+        return null
+      }
+      if (
+        recoveredLocalPort ||
+        !args.onLocalPortRecovered ||
+        !args.verify ||
+        localPort === 0 ||
+        !(error instanceof Error) ||
+        error.cause !== 'EADDRINUSE'
+      ) {
+        throw error
+      }
+      recoveredLocalPort = true
+      forward = await addCurrentForward({ ...args, localPort: 0 }, remotePort)
+      if (forward) {
+        localPort = forward.localPort
+      }
+    }
     if (!forward) {
       return null
     }
-    const identity = args.verify
-      ? await args.verify(forward.localPort)
-      : ({ verdict: 'verified' } as const)
+    let identity: OrcadTunnelIdentity
+    try {
+      identity = args.verify ? await args.verify(forward.localPort) : { verdict: 'verified' }
+    } catch (error) {
+      await args.forwards.removeForwardAndWait(forward.id)
+      throw error
+    }
     if (!args.stillCurrent()) {
       await args.forwards.removeForwardAndWait(forward.id)
       return null
     }
+    if (recoveredLocalPort && identity.verdict === 'unreachable') {
+      await args.forwards.removeForwardAndWait(forward.id)
+      throw new Error(`Could not verify the replacement SSH tunnel: ${identity.detail}`)
+    }
     if (identity.verdict === 'verified' || identity.verdict === 'unreachable') {
+      if (recoveredLocalPort) {
+        try {
+          args.onLocalPortRecovered?.(forward.localPort)
+        } catch (error) {
+          await args.forwards.removeForwardAndWait(forward.id)
+          throw error
+        }
+      }
       if (identity.verdict === 'unreachable') {
         // Unreachable servers may be down or starting; this is not proof of a foreign server.
         console.warn(

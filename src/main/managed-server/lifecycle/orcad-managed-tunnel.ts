@@ -1,3 +1,4 @@
+import { replaceManagedOrcadLocalPort } from '../../../shared/runtime-environment-managed-tunnel-port'
 import type { KnownRuntimeEnvironment } from '../../../shared/runtime-environments'
 import { resolveEnvironment } from '../../../shared/runtime-environment-store'
 import type { SshTarget } from '../../../shared/ssh-types'
@@ -48,8 +49,11 @@ function pairingRecovery(userDataPath: string): ManagedOrcadPairingRecovery {
     resolve: (environmentId) => resolveEnvironment(userDataPath, environmentId),
     repairs,
     ensure: (environment) =>
-      managedTunnels.ensure(environment, () =>
-        resolveEnvironmentOrNull(userDataPath, environment.id)
+      managedTunnels.ensure(
+        environment,
+        () => resolveEnvironmentOrNull(userDataPath, environment.id),
+        true,
+        portRecovery(userDataPath)
       )
   }
 }
@@ -61,7 +65,12 @@ export async function ensureOrcadManagedTunnel(
 ): Promise<KnownRuntimeEnvironment> {
   const { id } = resolveEnvironment(userDataPath, selector)
   await buildWithPairingRepair(pairingRecovery(userDataPath), id, (environment) =>
-    managedTunnels.ensure(environment, () => resolveEnvironmentOrNull(userDataPath, id))
+    managedTunnels.ensure(
+      environment,
+      () => resolveEnvironmentOrNull(userDataPath, id),
+      true,
+      portRecovery(userDataPath)
+    )
   )
   return resolveEnvironment(userDataPath, id)
 }
@@ -72,7 +81,11 @@ export async function rebuildOrcadManagedTunnel(
 ): Promise<'built' | 'repaired'> {
   const { id } = resolveEnvironment(userDataPath, selector)
   return buildWithPairingRepair(pairingRecovery(userDataPath), id, (environment) =>
-    managedTunnels.rebuild(environment, () => resolveEnvironmentOrNull(userDataPath, id))
+    managedTunnels.rebuild(
+      environment,
+      () => resolveEnvironmentOrNull(userDataPath, id),
+      portRecovery(userDataPath)
+    )
   )
 }
 
@@ -104,6 +117,13 @@ export function forgetFailedManagedOrcadPairingRepair(
   environmentId: string
 ): void {
   pairingRepairs.get(userDataPath)?.forgetFailures(environmentId)
+}
+
+function portRecovery(userDataPath: string) {
+  return {
+    replaceLocalPort: (expected: KnownRuntimeEnvironment, localPort: number) =>
+      replaceManagedOrcadLocalPort(userDataPath, expected, localPort)
+  }
 }
 
 function resolveEnvironmentOrNull(userDataPath: string, id: string) {

@@ -1,4 +1,8 @@
 import {
+  ensureManagedOrcadTunnelBinding,
+  type ManagedTunnelPortRecovery
+} from './orcad-managed-tunnel-ensure'
+import {
   getRuntimeSshAccess,
   type KnownRuntimeEnvironment
 } from '../../../shared/runtime-environments'
@@ -16,18 +20,14 @@ import {
 } from './orcad-managed-tunnel-resume'
 import type { OrcadManagedServing } from './orcad-managed-serving'
 import {
-  activeTunnelMatches,
   dropActiveOrcadTunnel,
-  managedTunnelStillPaired,
   recordActiveOrcadTunnel,
-  resolveManagedTunnelBinding,
   supersededTunnelError,
   type ActiveOrcadTunnel
 } from './orcad-managed-tunnel-active'
 import { checkManagedTunnelServing, type OrcadTunnelServing } from './orcad-managed-tunnel-serving'
 import type { getSshTargetRegistryStore } from '../../ssh/targets/ssh-target-registry'
 import {
-  environmentForwardChecks,
   forwardToVerifiedOrcad,
   PERSISTED_PORT_TARGETING,
   type OrcadManagedTunnelTargeting,
@@ -86,7 +86,8 @@ export class OrcadManagedTunnelManager {
   ensure(
     environment: KnownRuntimeEnvironment,
     resolveCurrent: () => KnownRuntimeEnvironment | null = () => environment,
-    retryJoined = true
+    retryJoined = true,
+    portRecovery: ManagedTunnelPortRecovery = {}
   ): Promise<void> {
     if (!getRuntimeSshAccess(environment)) {
       return Promise.resolve()
@@ -96,29 +97,36 @@ export class OrcadManagedTunnelManager {
       // Retry joined runs cancelled by another caller; authentication failures remain authoritative.
       return pending.catch((error: unknown) =>
         retryJoined && !(error instanceof Error && isAuthError(error))
-          ? this.ensure(environment, resolveCurrent, false)
+          ? this.ensure(environment, resolveCurrent, false, portRecovery)
           : Promise.reject(error)
       )
     }
-    const operation = this.ensureManagedTunnel(environment, resolveCurrent).finally(() => {
-      if (this.inFlight.get(environment.id) === operation) {
-        this.inFlight.delete(environment.id)
+    const operation = this.ensureManagedTunnel(environment, resolveCurrent, portRecovery).finally(
+      () => {
+        if (this.inFlight.get(environment.id) === operation) {
+          this.inFlight.delete(environment.id)
+        }
       }
-    })
+    )
     this.inFlight.set(environment.id, operation)
     return operation
   }
 
   async rebuild(
     environment: KnownRuntimeEnvironment,
-    resolveCurrent: () => KnownRuntimeEnvironment | null = () => environment
+    resolveCurrent: () => KnownRuntimeEnvironment | null = () => environment,
+    portRecovery: ManagedTunnelPortRecovery = {}
   ): Promise<void> {
     await this.inFlight.get(environment.id)?.catch(() => undefined)
+    const current = resolveCurrent()
+    if (!current) {
+      throw supersededTunnelError()
+    }
     const active = this.active.get(environment.id)
     if (active) {
       await dropActiveOrcadTunnel(this.active, this.forwards, environment.id, active)
     }
-    await this.ensure(environment, resolveCurrent)
+    await this.ensure(current, resolveCurrent, true, portRecovery)
   }
 
   async start(
@@ -238,77 +246,25 @@ export class OrcadManagedTunnelManager {
     return this.resumeRecovery.recover(options)
   }
 
-  private async ensureManagedTunnel(
+  private ensureManagedTunnel(
     environment: KnownRuntimeEnvironment,
     resolveCurrent: () => KnownRuntimeEnvironment | null,
-    rebound = false
+    portRecovery: ManagedTunnelPortRecovery
   ): Promise<void> {
-    const { deployment, targetStore, connectionManager, target } = resolveManagedTunnelBinding(
+    return ensureManagedOrcadTunnelBinding(
+      {
+        dependencies: this.dependencies,
+        active: this.active,
+        buildTargets: this.buildTargets,
+        getManagerGeneration: () => this.managerGeneration,
+        ownershipGenerations: this.ownershipGenerations,
+        forwards: this.forwards,
+        targeting: this.targeting,
+        checkServing: (current) => this.checkServing(current)
+      },
       environment,
-      this.dependencies
+      resolveCurrent,
+      portRecovery
     )
-    this.buildTargets.set(environment.id, target.id)
-    const managerGeneration = this.managerGeneration
-    const ownershipGeneration = this.ownershipGenerations.get(environment.id) ?? 0
-    const expected = { environmentId: environment.id, ...deployment }
-    const stillOwned = (): boolean =>
-      this.managerGeneration === managerGeneration &&
-      (this.ownershipGenerations.get(environment.id) ?? 0) === ownershipGeneration &&
-      managedTunnelStillPaired(
-        environment,
-        resolveCurrent(),
-        targetStore.getTarget(target.id),
-        expected
-      )
-    const connection = await connectionManager.connect(target)
-    if (!stillOwned()) {
-      throw supersededTunnelError()
-    }
-    const transportGeneration = connection.getConnectGeneration()
-    const active = this.active.get(environment.id)
-    if (activeTunnelMatches(active, { connection, transportGeneration, target, deployment })) {
-      return
-    }
-    const checks = await environmentForwardChecks(this.targeting, {
-      environment,
-      target,
-      connection
-    })
-    if (active && stillOwned()) {
-      await dropActiveOrcadTunnel(this.active, this.forwards, environment.id, active)
-    }
-    if (!stillOwned()) {
-      throw supersededTunnelError()
-    }
-    const forward = await forwardToVerifiedOrcad({
-      targetId: target.id,
-      connection,
-      forwards: this.forwards,
-      localPort: deployment.localPort,
-      label: `Orca on ${environment.name}`,
-      ...checks,
-      stillCurrent: () => stillOwned() && connection.getConnectGeneration() === transportGeneration
-    })
-    if (!forward) {
-      throw supersededTunnelError()
-    }
-    recordActiveOrcadTunnel(this.active, environment.id, forward, {
-      connection,
-      preferredPort: deployment.remotePort,
-      sshTargetGeneration: deployment.sshTargetGeneration,
-      targetId: target.id,
-      transportGeneration
-    })
-    const recorded = this.active.get(environment.id)
-    const serving = await this.checkServing(environment)
-    if (!stillOwned() || connection.getConnectGeneration() !== transportGeneration) {
-      if (recorded) {
-        await dropActiveOrcadTunnel(this.active, this.forwards, environment.id, recorded)
-      }
-      throw supersededTunnelError()
-    }
-    if (serving.rebind && !rebound) {
-      await this.ensureManagedTunnel(environment, resolveCurrent, true)
-    }
   }
 }
