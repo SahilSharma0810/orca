@@ -1,34 +1,37 @@
-import type { LocalWorktreeFilesystemOptions } from './local-worktree-filesystem'
+import {
+  getLocalWorktreePathAccess,
+  toLocalWorktreeRuntimePath,
+  type LocalWorktreeFilesystemOptions
+} from './local-worktree-filesystem'
 import { isProvenLocalWorktreeRemovalLeftover } from './local-orphaned-worktree-cleanup'
-import { lstat } from 'node:fs/promises'
-import { join } from 'node:path'
 import type { RemoveWorktreeResult } from '../shared/worktree/create-types'
 import type { GitWorktreeInfo } from '../shared/worktree/types'
 import { listWorktreesStrict } from './git/worktree'
 import { getErrorCode } from './git/worktree-operation-options'
 import { areWorktreePathsEqual } from './git/worktree-path-comparison'
-import { CLIENT_REMOVAL_HOME } from './worktree-removal-home-guard'
+import { getPathOps } from './worktree-removal-home-guard'
 import {
   failedWorktreeRemovals,
   persistWorktreeRemovalRecords,
   worktreeCheckoutExists
 } from './worktree-removal-table'
-import {
-  assertWorktreeDoesNotContainRegisteredWorktree,
-  canSafelyRemoveOrphanedWorktreeDirectory
-} from './worktree-removal-safety'
+import { assertWorktreeDoesNotContainRegisteredWorktree } from './worktree-removal-safety'
 
 /** Absent .git or a proven orphan marker can identify a leftover; live or foreign registrations cannot. */
 export async function isUnregisteredRemovalLeftover(
   repoPath: string,
-  worktreePath: string
+  worktreePath: string,
+  localOptions: LocalWorktreeFilesystemOptions = {}
 ): Promise<boolean> {
+  const runtimePath = toLocalWorktreeRuntimePath(worktreePath, localOptions)
   try {
-    await lstat(join(worktreePath, '.git'))
+    await getLocalWorktreePathAccess(localOptions).statPath(
+      getPathOps(runtimePath).join(runtimePath, '.git')
+    )
   } catch (error) {
     return getErrorCode(error) === 'ENOENT'
   }
-  return canSafelyRemoveOrphanedWorktreeDirectory(worktreePath, repoPath, CLIENT_REMOVAL_HOME)
+  return isProvenLocalWorktreeRemovalLeftover(repoPath, worktreePath, localOptions)
 }
 
 export function differentCheckoutAtPathError(worktreePath: string): Error {
