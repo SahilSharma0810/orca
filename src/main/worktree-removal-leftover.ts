@@ -1,3 +1,5 @@
+import type { LocalWorktreeFilesystemOptions } from './local-worktree-filesystem'
+import { isProvenLocalWorktreeRemovalLeftover } from './local-orphaned-worktree-cleanup'
 import { lstat } from 'node:fs/promises'
 import { join } from 'node:path'
 import type { RemoveWorktreeResult } from '../shared/worktree/create-types'
@@ -61,12 +63,13 @@ export async function assertUnregisteredCheckoutGone(
   }
 }
 
-/** Registered paths use normal deletion; otherwise require the folder gone before retrying recorded cleanup. */
+/** Retry proven orphan links; unknown folders must be removed by their owner first. */
 export async function retryFailedRemovalUnlessRegistered(
   worktreeId: string,
   worktreePath: string,
   registeredWorktrees: readonly Pick<GitWorktreeInfo, 'path'>[],
-  retry: () => Promise<RemoveWorktreeResult> | undefined
+  retry: () => Promise<RemoveWorktreeResult> | undefined,
+  localOptions: LocalWorktreeFilesystemOptions = {}
 ): Promise<boolean> {
   if (registeredWorktrees.some((worktree) => areWorktreePathsEqual(worktree.path, worktreePath))) {
     if (failedWorktreeRemovals.delete(worktreeId)) {
@@ -76,7 +79,16 @@ export async function retryFailedRemovalUnlessRegistered(
   }
   const failed = failedWorktreeRemovals.get(worktreeId)
   if (failed) {
-    await assertUnregisteredCheckoutGone(failed.worktreePath, registeredWorktrees)
+    assertWorktreeDoesNotContainRegisteredWorktree(failed.worktreePath, registeredWorktrees)
+    if (
+      !(await isProvenLocalWorktreeRemovalLeftover(
+        failed.repoPath,
+        failed.worktreePath,
+        localOptions
+      ))
+    ) {
+      await assertUnregisteredCheckoutGone(failed.worktreePath, registeredWorktrees)
+    }
   }
   return retry() !== undefined
 }
