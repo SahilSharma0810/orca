@@ -155,6 +155,39 @@ describe('environmentForwardChecks', () => {
     })
   })
 
+  it('wires a stopped-slot wake into busy-port recovery before saving the candidate', async () => {
+    let bound = 6768
+    mocks.wake.mockImplementation(async () => {
+      bound = 58520
+      return { outcome: 'started' }
+    })
+    const checks = await environmentForwardChecks(
+      {
+        ...MANAGED_ORCAD_TUNNEL_TARGETING,
+        resolveRemotePort: async () => bound
+      },
+      input
+    )
+    const state = setup(
+      [{ verdict: 'unreachable', detail: 'stopped' }, { verdict: 'verified' }],
+      6768
+    )
+    state.addForward.mockRejectedValueOnce(new Error('busy', { cause: 'EADDRINUSE' }))
+    let saved: number | undefined
+    const result = await forwardToVerifiedOrcad({
+      ...state.args,
+      ...checks,
+      verify: state.verify,
+      onLocalPortRecovered: (localPort) => {
+        saved = localPort
+      }
+    })
+    expect(result).toMatchObject({ localPort: 41000, remotePort: 58520 })
+    expect(saved).toBe(41000)
+    expect(mocks.wake).toHaveBeenCalledOnce()
+    expect(state.verify).toHaveBeenCalledTimes(2)
+  })
+
   it('starts a server that stopped behind a port another runtime took, then follows it (#28013)', async () => {
     let bound = 6_768
     mocks.wake.mockImplementation(async () => {
@@ -298,5 +331,78 @@ describe('managed tunnel busy-port recovery', () => {
     ).resolves.toBeNull()
     expect(state.addForward).toHaveBeenCalledOnce()
     expect(save).not.toHaveBeenCalled()
+  })
+})
+
+describe('waking stopped servers during local-port recovery', () => {
+  it.each([6768, 58520])(
+    'wakes and verifies the server on remote port %s before saving',
+    async (port) => {
+      const state = setup(
+        [{ verdict: 'unreachable', detail: 'stopped' }, { verdict: 'verified' }],
+        port
+      )
+      state.addForward.mockRejectedValueOnce(new Error('busy', { cause: 'EADDRINUSE' }))
+      const wakeStoppedServer = vi.fn(async () => port)
+      let saved: number | undefined
+      const result = await forwardToVerifiedOrcad({
+        ...state.args,
+        wakeStoppedServer,
+        onLocalPortRecovered: (localPort) => {
+          saved = localPort
+        }
+      })
+      expect(result).toMatchObject({ localPort: 41000, remotePort: port })
+      expect(saved).toBe(41000)
+      expect(wakeStoppedServer).toHaveBeenCalledOnce()
+      expect(state.verify).toHaveBeenCalledTimes(2)
+      expect(state.addForward.mock.calls.map((call) => call[4])).toEqual([6768, 6768, port])
+    }
+  )
+
+  it('does not keep waking or save a server that remains unreachable', async () => {
+    const state = setup(
+      [
+        { verdict: 'unreachable', detail: 'stopped' },
+        { verdict: 'unreachable', detail: 'still stopped' }
+      ],
+      6768
+    )
+    state.addForward.mockRejectedValueOnce(new Error('busy', { cause: 'EADDRINUSE' }))
+    const wakeStoppedServer = vi.fn(async () => 6768)
+    let saved = false
+    await expect(
+      forwardToVerifiedOrcad({
+        ...state.args,
+        wakeStoppedServer,
+        onLocalPortRecovered: () => {
+          saved = true
+        }
+      })
+    ).rejects.toThrow('Could not verify')
+    expect(wakeStoppedServer).toHaveBeenCalledOnce()
+    expect(state.verify).toHaveBeenCalledTimes(2)
+    expect(saved).toBe(false)
+  })
+
+  it('abandons recovery superseded while the server wakes', async () => {
+    const state = setup([{ verdict: 'unreachable', detail: 'stopped' }], 6768)
+    state.addForward.mockRejectedValueOnce(new Error('busy', { cause: 'EADDRINUSE' }))
+    let current = true
+    let saved = false
+    const result = await forwardToVerifiedOrcad({
+      ...state.args,
+      stillCurrent: () => current,
+      wakeStoppedServer: async () => {
+        current = false
+        return 6768
+      },
+      onLocalPortRecovered: () => {
+        saved = true
+      }
+    })
+    expect(result).toBeNull()
+    expect(state.addForward).toHaveBeenCalledTimes(2)
+    expect(saved).toBe(false)
   })
 })

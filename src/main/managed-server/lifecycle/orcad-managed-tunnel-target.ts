@@ -23,7 +23,7 @@ import type { SshPortForwardManager } from '../../ssh/port-forwarding/ssh-port-f
 export type OrcadManagedTunnelTargeting = {
   resolveRemotePort: (input: OrcadTunnelPortInput) => Promise<number>
   verifyIdentity: (environment: KnownRuntimeEnvironment) => Promise<OrcadTunnelIdentity>
-  /** Wake only proven-stopped slots before rereading ports after foreign answers. */
+  /** Wake only proven-stopped slots before rereading a moved or unreachable server. */
   wakeStoppedServer?: (input: OrcadTunnelPortInput) => Promise<void>
   readPublishedPort?: (input: OrcadTunnelPortInput) => Promise<number | null>
 }
@@ -69,6 +69,7 @@ type VerifiedOrcadForwardArgs = {
   verify?: (localPort: number) => Promise<OrcadTunnelIdentity>
   stillCurrent: () => boolean
   onLocalPortRecovered?: (localPort: number) => void
+  wakeStoppedServer?: () => Promise<number>
 }
 
 export type OrcadTunnelStartChecks = Pick<
@@ -82,13 +83,18 @@ export type OrcadTunnelStartChecks = Pick<
 export async function environmentForwardChecks(
   targeting: OrcadManagedTunnelTargeting,
   input: OrcadTunnelPortInput
-): Promise<Required<Pick<VerifiedOrcadForwardArgs, 'remotePort' | 'rereadRemotePort' | 'verify'>>> {
+): Promise<
+  Required<Pick<VerifiedOrcadForwardArgs, 'remotePort' | 'rereadRemotePort' | 'verify'>> &
+    Pick<VerifiedOrcadForwardArgs, 'wakeStoppedServer'>
+> {
+  const wakeAndResolve = async () => {
+    await targeting.wakeStoppedServer?.(input)
+    return targeting.resolveRemotePort(input)
+  }
   return {
     remotePort: await targeting.resolveRemotePort(input),
-    rereadRemotePort: async () => {
-      await targeting.wakeStoppedServer?.(input)
-      return targeting.resolveRemotePort(input)
-    },
+    rereadRemotePort: wakeAndResolve,
+    ...(targeting.wakeStoppedServer ? { wakeStoppedServer: wakeAndResolve } : {}),
     verify: (localPort) =>
       targeting.verifyIdentity(withRuntimeSshTunnelLocalPort(input.environment, localPort))
   }
@@ -101,6 +107,7 @@ export async function forwardToVerifiedOrcad(
   let remotePort = args.remotePort
   let localPort = args.localPort
   let recoveredLocalPort = false
+  let attemptedWake = false
   for (let attempt = 0; ; attempt++) {
     let forward: PortForwardEntry | null
     try {
@@ -141,6 +148,14 @@ export async function forwardToVerifiedOrcad(
     }
     if (recoveredLocalPort && identity.verdict === 'unreachable') {
       await args.forwards.removeForwardAndWait(forward.id)
+      if (!attemptedWake && args.wakeStoppedServer) {
+        attemptedWake = true
+        remotePort = await args.wakeStoppedServer()
+        if (!args.stillCurrent()) {
+          return null
+        }
+        continue
+      }
       throw new Error(`Could not verify the replacement SSH tunnel: ${identity.detail}`)
     }
     if (identity.verdict === 'verified' || identity.verdict === 'unreachable') {
@@ -165,8 +180,9 @@ export async function forwardToVerifiedOrcad(
     if (identity.verdict === 'unpaired') {
       throw orcadIdentityRefusal(remotePort, identity)
     }
-    const reread =
-      attempt === 0 && args.rereadRemotePort ? await args.rereadRemotePort() : remotePort
+    const canReread = attempt === 0 && args.rereadRemotePort
+    attemptedWake ||= Boolean(canReread)
+    const reread = canReread ? await canReread() : remotePort
     if (reread === remotePort || !args.stillCurrent()) {
       throw orcadIdentityRefusal(remotePort, identity)
     }

@@ -95,9 +95,9 @@ export class Ssh2PortForwardProvider implements SshPortForwardProvider {
 
 export function listenForPortForward(server: Server, host: string, port: number): Promise<void> {
   return new Promise((resolve, reject) => {
-    const onError = (err: Error): void => {
+    const onError = (err: NodeJS.ErrnoException): void => {
       server.removeListener('listening', onListening)
-      reject(new Error(`Failed to listen on ${host}:${port}: ${err.message}`))
+      reject(new Error(`Failed to listen on ${host}:${port}: ${err.message}`, { cause: err.code }))
     }
     const onListening = (): void => {
       server.removeListener('error', onError)
