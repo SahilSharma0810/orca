@@ -24,6 +24,7 @@ import { buildReadDirErrorBreadcrumb, type ReadDirThrowSite } from '../readdir-e
 import type { FilesystemHandlerContext } from './filesystem-handler-context'
 import { registerFilesystemChunkReadHandler } from './filesystem-chunk-read-handler'
 import { readMediaPreview } from '../../media/media-preview-protocol'
+import type { RemoteMediaAddress } from '../../../shared/media-file-extensions'
 import {
   readLocalFileContent,
   readLocalLogSnapshot,
@@ -94,6 +95,26 @@ export function registerFilesystemReadHandlers(context: FilesystemHandlerContext
       return args.includeLocalLogMetadata === true
         ? readLocalLogSnapshot(filePath)
         : readLocalFileContent(filePath)
+    }
+  )
+
+  ipcMain.handle(
+    'fs:readRuntimeMediaPreview',
+    (event, args: RemoteMediaAddress): ReturnType<typeof readMediaPreview> => {
+      const { environmentId, worktree, relativePath } = args
+      if (
+        typeof environmentId !== 'string' ||
+        !environmentId ||
+        typeof worktree !== 'string' ||
+        !worktree ||
+        typeof relativePath !== 'string' ||
+        !relativePath ||
+        /^([/\\]|[A-Za-z]:[/\\])/.test(relativePath) ||
+        relativePath.includes('\0')
+      ) {
+        throw new Error('Invalid media path')
+      }
+      return readMediaPreview(event, { remote: args }, store)
     }
   )
 
