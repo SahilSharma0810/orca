@@ -1,6 +1,7 @@
 import { sameAgentStatusTerminalOwner } from '../../../../shared/agent-status-terminal-owner'
 import type { AppState } from '../types'
 import { resolveAgentStatusLiveEntryMainAgent } from './agent-status-live-entry-main-agent'
+import { resolveAgentStatusLiveEntryMonitoring } from './agent-status-live-entry-monitoring'
 import { resolveAgentStatusLiveEntryStateHistory } from '../../../../shared/agent-status-live-entry-state-history'
 import {
   pickHostTurnEnd,
@@ -208,12 +209,19 @@ export function buildAgentStatusLiveEntry(
     matchedRegistryLaunchConfig ??
     matchedSleepingLaunchConfig
   const mainAgent = resolveAgentStatusLiveEntryMainAgent(existing, payload, identity.agentType)
+  const monitoring = resolveAgentStatusLiveEntryMonitoring(existing, payload, {
+    agentType: identity.agentType,
+    providerSession,
+    terminalHandle: statusTerminalHandle,
+    connectionId:
+      routing?.connectionId === undefined ? existing?.connectionId : routing.connectionId,
+    worktreeId: routing?.worktreeId ?? existing?.worktreeId
+  })
   const programStatus =
     payload.programStatus === undefined ? existing?.programStatus : payload.programStatus
   const entry: AgentStatusEntry = {
     state: payload.state,
-    workingMode: payload.workingMode,
-    claudeTaskWakeupPending: payload.claudeTaskWakeupPending,
+    ...monitoring,
     prompt: payload.prompt,
     updatedAt,
     // Why: a writer that carries no observation clock (OSC bytes, launch seeds) is itself

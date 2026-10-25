@@ -3,6 +3,7 @@ import type { Tab } from '../../../shared/tab-types'
 import type { AgentStatusEntry } from '../../../shared/agent-status-types'
 import type { AutomationRun } from '../../../shared/automations-types'
 import { findReusableAutomationSession } from './automation-session-reuse'
+import { createTestStore } from '../store/slices/store-test-helpers'
 
 const leafId = '11111111-1111-4111-8111-111111111111'
 const paneKey = `tab-1:${leafId}`
@@ -104,6 +105,56 @@ describe('automation session reuse in the renderer store', () => {
       })
 
       expect(session).toEqual({ tabId: 'tab-1', ptyId: 'pty-right', paneKey: splitPaneKey })
+    }
+  )
+
+  it.each([
+    { pending: undefined, reusable: true },
+    { pending: 'notification' as const, reusable: false }
+  ])(
+    'keeps monitoring reuse eligibility after OSC with pending=$pending',
+    ({ pending, reusable }) => {
+      const store = createTestStore()
+      store.setState({
+        ptyIdsByTabId: { 'tab-1': ['pty-1'] },
+        unifiedTabsByWorktree: { 'wt-1': [terminalTab] }
+      })
+      store.getState().setAgentStatus(paneKey, {
+        state: 'working',
+        workingMode: 'monitoring',
+        claudeTaskWakeupPending: pending,
+        mainAgent: { state: 'done', stateStartedAt: 5 },
+        prompt: 'watch',
+        agentType: 'claude'
+      })
+      store.getState().setAgentStatus(paneKey, {
+        state: 'working',
+        prompt: 'watch',
+        agentType: 'claude',
+        observation: {
+          origin: 'osc',
+          authorityId: 'renderer',
+          incarnation: 0,
+          revision: 1,
+          observedAt: 11,
+          kind: 'snapshot'
+        }
+      })
+
+      const session = findReusableAutomationSession({
+        automationId: 'auto-1',
+        agentId: 'claude',
+        worktreeId: 'wt-1',
+        currentRunId: 'run-current',
+        runs: [run({})],
+        state: store.getState()
+      })
+
+      expect(store.getState().agentStatusByPaneKey[paneKey]).toMatchObject({
+        workingMode: 'monitoring',
+        claudeTaskWakeupPending: pending
+      })
+      expect(session).toEqual(reusable ? { tabId: 'tab-1', ptyId: 'pty-1', paneKey } : null)
     }
   )
 

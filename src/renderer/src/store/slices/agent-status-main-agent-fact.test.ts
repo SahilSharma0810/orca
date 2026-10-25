@@ -271,3 +271,59 @@ it('clears the live pending task wakeup when a later monitoring row has none', (
     'notification'
   )
 })
+
+describe('monitoring facts from the host', () => {
+  it.each([
+    'host',
+    'state',
+    'agent',
+    'session',
+    'first-session',
+    'owner',
+    'terminal',
+    'boundary'
+  ] as const)('clears monitoring facts on a %s change', (change) => {
+    const store = createTestStore()
+    store.getState().setAgentStatus(
+      PANE,
+      {
+        state: 'working',
+        workingMode: 'monitoring',
+        claudeTaskWakeupPending: 'notification',
+        mainAgent: { state: 'done', stateStartedAt: 5 },
+        prompt: 'watch',
+        agentType: 'claude'
+      },
+      undefined,
+      { updatedAt: 10 },
+      { connectionId: null, worktreeId: 'wt-1' },
+      change === 'first-session'
+        ? undefined
+        : { providerSession: { key: 'session_id', id: 'session-1' } }
+    )
+    store.getState().setAgentStatus(
+      PANE,
+      {
+        state: change === 'state' ? 'done' : 'working',
+        prompt: 'watch',
+        agentType: change === 'agent' ? 'codex' : 'claude',
+        ...(change === 'boundary' ? { sessionBoundary: true } : {}),
+        ...(change === 'host' ? {} : { observation: osc(1) })
+      },
+      undefined,
+      { updatedAt: 2_000_000 },
+      change === 'owner'
+        ? { connectionId: 'remote-2' }
+        : change === 'terminal'
+          ? { terminalHandle: 'new-terminal' }
+          : undefined,
+      change === 'session' || change === 'first-session'
+        ? { providerSession: { key: 'session_id', id: 'session-2' } }
+        : undefined
+    )
+
+    const entry = store.getState().agentStatusByPaneKey[PANE]
+    expect(entry.workingMode).toBeUndefined()
+    expect(entry.claudeTaskWakeupPending).toBeUndefined()
+  })
+})
