@@ -79,6 +79,8 @@ export type AgentStatusEntry = {
   state: AgentStatusState
   /** Ongoing work that does not require foreground agent execution. Only valid while working. */
   workingMode?: AgentWorkingMode
+  /** Live host evidence that a background task is about to wake the main agent. */
+  claudeTaskWakeupPending?: AgentStatusPayload['claudeTaskWakeupPending']
   /** The user's most recent prompt. Cached across the turn — later tool-use events
    *  omit it, so the last value persists until a new prompt or pane reset. Empty when unknown. */
   prompt: string

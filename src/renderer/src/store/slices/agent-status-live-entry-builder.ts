@@ -213,6 +213,7 @@ export function buildAgentStatusLiveEntry(
   const entry: AgentStatusEntry = {
     state: payload.state,
     workingMode: payload.workingMode,
+    claudeTaskWakeupPending: payload.claudeTaskWakeupPending,
     prompt: payload.prompt,
     updatedAt,
     // Why: a writer that carries no observation clock (OSC bytes, launch seeds) is itself

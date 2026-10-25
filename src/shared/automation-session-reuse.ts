@@ -2,9 +2,14 @@
  * Which previous run's agent a `reuseSession` automation sends its next prompt to. One rule for
  * the desktop and a headless host; each supplies its own read of the pane's status and liveness.
  */
-import type { AgentType } from './agent-status-types'
+import type { AgentStatusPayload } from './agent-status-types'
 import type { AutomationRun } from './automations-types'
 import type { TuiAgent } from './tui-agent'
+
+type AutomationReuseAgentStatus = Pick<
+  AgentStatusPayload,
+  'state' | 'agentType' | 'workingMode' | 'mainAgent' | 'claudeTaskWakeupPending'
+>
 
 export type ReusableAutomationRun = AutomationRun & {
   terminalPaneKey: string
@@ -22,7 +27,7 @@ export function findReusableAutomationRun<Session>(args: {
   worktreeId: string
   currentRunId: string
   runs: readonly AutomationRun[]
-  agentStatusForPane: (paneKey: string) => { state: string; agentType?: AgentType } | undefined
+  agentStatusForPane: (paneKey: string) => AutomationReuseAgentStatus | undefined
   /** The run's session while its pane still holds the run's own PTY; null otherwise. */
   liveSession: (run: ReusableAutomationRun) => Session | null
 }): Session | null {
@@ -40,7 +45,7 @@ export function findReusableAutomationRun<Session>(args: {
       continue
     }
     const status = args.agentStatusForPane(run.terminalPaneKey)
-    if (!status || !isIdleAgentOf(status, args.agentId)) {
+    if (!status || !isReusableAgentOf(status, args.agentId)) {
       continue
     }
     const session = args.liveSession(run)
@@ -60,11 +65,13 @@ function isReusableRun(run: AutomationRun, worktreeId: string): run is ReusableA
   )
 }
 
-function isIdleAgentOf(
-  status: { state: string; agentType?: AgentType },
-  agentId: TuiAgent
-): boolean {
-  if (status.state !== 'done') {
+function isReusableAgentOf(status: AutomationReuseAgentStatus, agentId: TuiAgent): boolean {
+  const monitoringAfterTurn =
+    status.state === 'working' &&
+    status.workingMode === 'monitoring' &&
+    status.mainAgent?.state === 'done' &&
+    status.claudeTaskWakeupPending === undefined
+  if (status.state !== 'done' && !monitoringAfterTurn) {
     return false
   }
   return !status.agentType || status.agentType === 'unknown' || status.agentType === agentId

@@ -239,3 +239,35 @@ describe('session-boundary done semantics (STA-3386)', () => {
     expect(store.getState().agentStatusByPaneKey[PANE].sessionBoundary).toBeUndefined()
   })
 })
+
+it('clears the live pending task wakeup when a later monitoring row has none', () => {
+  const store = createTestStore()
+  const status = {
+    state: 'working' as const,
+    workingMode: 'monitoring' as const,
+    prompt: 'watch',
+    agentType: 'claude',
+    mainAgent: { state: 'done' as const, stateStartedAt: 5 }
+  }
+  const normalized = normalizeAgentStatusEvent({
+    ...status,
+    paneKey: PANE,
+    connectionId: null,
+    receivedAt: 10,
+    stateStartedAt: 5,
+    claudeTaskWakeupPending: 'notification'
+  })
+  expect(normalized?.claudeTaskWakeupPending).toBe('notification')
+  if (!normalized) {
+    throw new Error('Expected a normalized status')
+  }
+  store.getState().setAgentStatus(PANE, normalized)
+  expect(store.getState().agentStatusByPaneKey[PANE]).toMatchObject({
+    claudeTaskWakeupPending: 'notification'
+  })
+  store.getState().setAgentStatus(PANE, status)
+  expect(store.getState().agentStatusByPaneKey[PANE]).not.toHaveProperty(
+    'claudeTaskWakeupPending',
+    'notification'
+  )
+})
