@@ -29,7 +29,11 @@ export async function isUnregisteredRemovalLeftover(
       getPathOps(runtimePath).join(runtimePath, '.git')
     )
   } catch (error) {
-    return getErrorCode(error) === 'ENOENT'
+    const code = getErrorCode(error)
+    if (code === 'ENOENT' || code === 'ENOTDIR') {
+      return true
+    }
+    throw error
   }
   return isProvenLocalWorktreeRemovalLeftover(repoPath, worktreePath, localOptions)
 }
@@ -40,11 +44,11 @@ export function differentCheckoutAtPathError(worktreePath: string): Error {
   )
 }
 
-export async function isCheckoutRegistered(record: {
-  repoPath: string
-  worktreePath: string
-}): Promise<boolean> {
-  return (await listWorktreesStrict(record.repoPath)).some((worktree) =>
+export async function isCheckoutRegistered(
+  record: { repoPath: string; worktreePath: string },
+  localOptions: LocalWorktreeFilesystemOptions = {}
+): Promise<boolean> {
+  return (await listWorktreesStrict(record.repoPath, localOptions)).some((worktree) =>
     areWorktreePathsEqual(worktree.path, record.worktreePath)
   )
 }
@@ -58,9 +62,10 @@ export function unregisteredFolderRefusal(worktreePath: string): Error {
 /** Name nested worktrees before asking the user to remove an unregistered folder. */
 export async function assertUnregisteredCheckoutGone(
   worktreePath: string,
-  registeredWorktrees: readonly Pick<GitWorktreeInfo, 'path'>[] = []
+  registeredWorktrees: readonly Pick<GitWorktreeInfo, 'path'>[] = [],
+  localOptions: LocalWorktreeFilesystemOptions = {}
 ): Promise<void> {
-  if (await worktreeCheckoutExists(worktreePath)) {
+  if (await worktreeCheckoutExists(worktreePath, localOptions)) {
     assertWorktreeDoesNotContainRegisteredWorktree(worktreePath, registeredWorktrees)
     throw unregisteredFolderRefusal(worktreePath)
   }
@@ -90,7 +95,7 @@ export async function retryFailedRemovalUnlessRegistered(
         localOptions
       ))
     ) {
-      await assertUnregisteredCheckoutGone(failed.worktreePath, registeredWorktrees)
+      await assertUnregisteredCheckoutGone(failed.worktreePath, registeredWorktrees, localOptions)
     }
   }
   return retry() !== undefined

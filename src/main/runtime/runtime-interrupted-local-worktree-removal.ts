@@ -57,6 +57,11 @@ export function interruptedLocalWorktreeRemovalJob(
   record: WorktreeRemovalRecord,
   host: InterruptedWorktreeRemovalHost
 ): BackgroundWorktreeRemovalJob {
+  let localOptions: RuntimeLocalWorktreeRemovalFinishArgs['localOptions'] | undefined
+  const getLocalOptions = () => {
+    const repo = host.store.getRepo(record.repoId)
+    return (localOptions ??= repo ? getLocalProjectWorktreeGitOptions(host.store, repo) : {})
+  }
   const resolveRemovedPushTarget = () =>
     resolveWorktreeRemovalMetadata(
       host.store,
@@ -65,11 +70,13 @@ export function interruptedLocalWorktreeRemovalJob(
       LOCAL_EXECUTION_HOST_ID
     )?.pushTarget
   return {
+    getLocalOptions,
     run: async (stopSignal) => {
       const removedPushTarget = resolveRemovedPushTarget()
       const result = await finishInterruptedLocalWorktreeRemoval({
         record,
         store: host.store,
+        localOptions: getLocalOptions(),
         stopSignal,
         removedPushTarget,
         acquireWatcherRemoval: (path) => {
@@ -102,7 +109,7 @@ export function interruptedLocalWorktreeRemovalJob(
 
 type InterruptedLocalWorktreeRemovalArgs = Pick<
   RuntimeLocalWorktreeRemovalFinishArgs,
-  'removedPushTarget' | 'closeWatchers' | 'preserveBranchHead' | 'finishRemoval'
+  'removedPushTarget' | 'closeWatchers' | 'preserveBranchHead' | 'finishRemoval' | 'localOptions'
 > & {
   store: RuntimeStore
   record: WorktreeRemovalRecord
@@ -126,7 +133,7 @@ async function finishInterruptedLocalWorktreeRemoval(
     console.warn(`[worktrees] dropping removal of ${record.worktreePath}: its repo is gone`)
     return {}
   }
-  const localOptions = getLocalProjectWorktreeGitOptions(store, repo)
+  const { localOptions } = args
   const finishArgs: RuntimeLocalWorktreeRemovalFinishArgs = {
     store,
     removedPushTarget: args.removedPushTarget,
@@ -177,7 +184,7 @@ async function finishInterruptedLocalWorktreeRemoval(
     if (
       !(await isProvenLocalWorktreeRemovalLeftover(repo.path, record.worktreePath, localOptions))
     ) {
-      await assertUnregisteredCheckoutGone(record.worktreePath, worktrees)
+      await assertUnregisteredCheckoutGone(record.worktreePath, worktrees, localOptions)
     }
   }
   const gate = await args.acquireWatcherRemoval(record.worktreePath)
@@ -216,7 +223,7 @@ async function finishInterruptedLocalWorktreeRemoval(
             args.closeWatchers
           )
         }
-        await assertUnregisteredCheckoutGone(record.worktreePath)
+        await assertUnregisteredCheckoutGone(record.worktreePath, [], localOptions)
       },
       localOptions
     )

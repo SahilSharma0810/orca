@@ -44,7 +44,7 @@ export async function withUnregisteredRemovalCheckouts(
             record.repoPath,
             record.worktreePath,
             localOptions
-          ))))
+          ).catch(() => true))))
     ) {
       leftovers.push({
         path: record.worktreePath,

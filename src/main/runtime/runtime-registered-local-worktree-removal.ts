@@ -169,6 +169,7 @@ async function acceptRuntimeRegisteredLocalWorktreeRemoval(args: {
   // Why detached: every refusal above already ran, and Git's 20-35 s delete must finish even when the
   // request that asked for it times out; other views read the host's `removing` marker meanwhile.
   void startBackgroundWorktreeRemoval({
+    getLocalOptions: () => localOptions,
     removal: {
       worktreeId: args.target.id,
       repoId: repo.id,

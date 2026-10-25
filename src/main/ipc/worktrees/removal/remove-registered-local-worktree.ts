@@ -160,6 +160,7 @@ export async function removeRegisteredLocalWorktree(
   }
   // After acceptance, deletion must survive request cancellation; other views observe the host's removing marker.
   void startBackgroundWorktreeRemoval({
+    getLocalOptions: () => localWorktreeGitOptions,
     removal: {
       worktreeId: args.worktreeId,
       repoId,
