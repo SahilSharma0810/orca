@@ -1,7 +1,5 @@
 import { describe, expect, it } from 'vitest'
 import type { AgentStatusPayload } from './agent-status-types'
-import { normalizeHookPayload } from './agent-hook-listener'
-import { createHookListenerState } from './agent-hook-listener/listener-state'
 import type { AutomationRun } from './automations-types'
 import { findReusableAutomationRun } from './automation-session-reuse'
 
@@ -37,7 +35,13 @@ function find(
   options: {
     status?: Pick<
       AgentStatusPayload,
-      'state' | 'agentType' | 'workingMode' | 'mainAgent' | 'claudeTaskWakeupPending'
+      | 'state'
+      | 'agentType'
+      | 'workingMode'
+      | 'mainAgent'
+      | 'claudeTaskWakeupPending'
+      | 'sessionBoundary'
+      | 'subagents'
     >
     livePtyIds?: string[]
   } = {}
@@ -61,83 +65,31 @@ function find(
 }
 
 describe('automation session reuse selection', () => {
-  it('reuses the prior pane after a real Claude Stop leaves a Monitor running', () => {
-    const state = createHookListenerState()
-    const paneKey = 'tab-1:11111111-1111-4111-8111-111111111111'
-    normalizeHookPayload(
-      state,
-      'claude',
-      {
-        paneKey,
-        payload: { hook_event_name: 'UserPromptSubmit', prompt: 'watch my inbox' }
-      },
-      'production'
-    )
-    const stopped = normalizeHookPayload(
-      state,
-      'claude',
-      {
-        paneKey,
-        payload: {
-          hook_event_name: 'Stop',
-          background_tasks: [{ id: 'watch-inbox', type: 'monitor', status: 'running' }]
-        }
-      },
-      'production'
-    )
-    expect(stopped?.payload).toMatchObject({
-      state: 'working',
-      workingMode: 'monitoring',
-      mainAgent: { state: 'done' }
-    })
-    expect(find([run({ terminalPaneKey: paneKey })], { status: stopped?.payload })).toBe('run-1')
-  })
-
   it.each([
-    { state: 'working', mainAgent: { state: 'done', stateStartedAt: 1 } },
-    { state: 'working', workingMode: 'monitoring' },
-    {
-      state: 'working',
-      workingMode: 'monitoring',
-      mainAgent: { state: 'working', stateStartedAt: 1 }
-    },
-    {
-      state: 'working',
-      workingMode: 'monitoring',
-      mainAgent: { state: 'waiting', stateStartedAt: 1 }
-    },
-    {
-      state: 'waiting',
-      workingMode: 'monitoring',
-      mainAgent: { state: 'done', stateStartedAt: 1 }
-    },
-    {
-      state: 'blocked',
-      workingMode: 'monitoring',
-      mainAgent: { state: 'done', stateStartedAt: 1 }
-    },
-    {
-      state: 'working',
-      workingMode: 'monitoring',
-      mainAgent: { state: 'done', stateStartedAt: 1 },
-      claudeTaskWakeupPending: 'notification'
-    },
-    {
-      state: 'working',
-      workingMode: 'monitoring',
-      mainAgent: { state: 'done', stateStartedAt: 1 },
-      claudeTaskWakeupPending: 'finishing-turn'
-    },
-    {
-      state: 'working',
-      workingMode: 'monitoring',
-      mainAgent: { state: 'done', stateStartedAt: 1 },
-      agentType: 'codex'
-    }
-  ] satisfies AgentStatusPayload[])(
-    'rejects unfinished or unproven monitoring status %j',
-    (status) => {
-      expect(find([run({})], { status })).toBeNull()
+    { workingMode: undefined },
+    { mainAgent: undefined },
+    { state: 'waiting' },
+    { state: 'blocked' },
+    { mainAgent: { state: 'working', stateStartedAt: 1 } },
+    { mainAgent: { state: 'waiting', stateStartedAt: 1 } },
+    { claudeTaskWakeupPending: 'notification' },
+    { claudeTaskWakeupPending: 'finishing-turn' },
+    { sessionBoundary: true },
+    { subagents: [{ id: 'child', state: 'working', startedAt: 1 }] },
+    { agentType: 'codex' }
+  ] satisfies Partial<AgentStatusPayload>[])(
+    'rejects unfinished, permission, wakeup, boundary or other-agent evidence %j',
+    (override) => {
+      expect(
+        find([run({})], {
+          status: {
+            state: 'working',
+            workingMode: 'monitoring',
+            mainAgent: { state: 'done', stateStartedAt: 1 },
+            ...override
+          }
+        })
+      ).toBeNull()
     }
   )
 

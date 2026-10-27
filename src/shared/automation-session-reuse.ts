@@ -5,11 +5,9 @@
 import type { AgentStatusPayload } from './agent-status-types'
 import type { AutomationRun } from './automations-types'
 import type { TuiAgent } from './tui-agent'
+import { readAutomationAgentTurn, type AutomationAgentTurnStatus } from './automation-agent-turn'
 
-type AutomationReuseAgentStatus = Pick<
-  AgentStatusPayload,
-  'state' | 'agentType' | 'workingMode' | 'mainAgent' | 'claudeTaskWakeupPending'
->
+type AutomationReuseAgentStatus = AutomationAgentTurnStatus & Pick<AgentStatusPayload, 'agentType'>
 
 export type ReusableAutomationRun = AutomationRun & {
   terminalPaneKey: string
@@ -66,12 +64,7 @@ function isReusableRun(run: AutomationRun, worktreeId: string): run is ReusableA
 }
 
 function isReusableAgentOf(status: AutomationReuseAgentStatus, agentId: TuiAgent): boolean {
-  const monitoringAfterTurn =
-    status.state === 'working' &&
-    status.workingMode === 'monitoring' &&
-    status.mainAgent?.state === 'done' &&
-    status.claudeTaskWakeupPending === undefined
-  if (status.state !== 'done' && !monitoringAfterTurn) {
+  if (!readAutomationAgentTurn(status).settled) {
     return false
   }
   return !status.agentType || status.agentType === 'unknown' || status.agentType === agentId

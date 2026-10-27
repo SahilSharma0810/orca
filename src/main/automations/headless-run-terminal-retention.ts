@@ -15,6 +15,8 @@ export type HeadlessRunTerminalRetentionDeps = {
   terminalClientUse: (run: AutomationRun) => 'used' | 'unused' | 'unknown'
   /** True only while the pane holds this run's PTY. */
   runTerminalAlive: (run: AutomationRun) => boolean
+  /** Current whole-pane work, independently of foreground run completion. */
+  runWholeWorkState: (run: AutomationRun) => 'active' | 'clear' | 'unknown'
   /** Require fresh proof that only an idle shell remains in the PTY. */
   shellAloneAtPrompt: (run: AutomationRun) => Promise<boolean>
   /** Close only this run's pane and PTY; preserve user-created splits. */
@@ -56,7 +58,11 @@ export function createHeadlessRunTerminalRetention(deps: HeadlessRunTerminalRete
     if (deps.terminalClientUse(run) !== 'unused') {
       return false
     }
-    return run.status === 'completed' || (await deps.shellAloneAtPrompt(run))
+    const work = deps.runWholeWorkState(run)
+    if (work === 'active') {
+      return false
+    }
+    return (run.status === 'completed' && work === 'clear') || (await deps.shellAloneAtPrompt(run))
   }
 
   const sweepAutomation = async (

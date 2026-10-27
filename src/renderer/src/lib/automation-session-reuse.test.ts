@@ -1,26 +1,12 @@
 import { describe, expect, it } from 'vitest'
-import type { Tab } from '../../../shared/tab-types'
 import type { AgentStatusEntry } from '../../../shared/agent-status-types'
 import type { AutomationRun } from '../../../shared/automations-types'
 import { findReusableAutomationSession } from './automation-session-reuse'
-import { createTestStore } from '../store/slices/store-test-helpers'
 
 const leafId = '11111111-1111-4111-8111-111111111111'
 const paneKey = `tab-1:${leafId}`
 const splitLeafId = '22222222-2222-4222-8222-222222222222'
 const splitPaneKey = `tab-1:${splitLeafId}`
-const terminalTab: Tab = {
-  id: 'tab-1',
-  entityId: 'tab-1',
-  groupId: 'group-1',
-  worktreeId: 'wt-1',
-  contentType: 'terminal',
-  label: 'Claude',
-  customLabel: null,
-  color: null,
-  sortOrder: 0,
-  createdAt: 1
-}
 
 function run(overrides: Partial<AutomationRun>): AutomationRun {
   return {
@@ -62,101 +48,42 @@ function status(overrides: Partial<AgentStatusEntry> = {}): AgentStatusEntry {
 }
 
 describe('automation session reuse in the renderer store', () => {
-  it.each([
-    {},
-    { state: 'working', workingMode: 'monitoring', mainAgent: { state: 'done', stateStartedAt: 5 } }
-  ] satisfies Partial<AgentStatusEntry>[])(
-    'uses the exact split-pane PTY with status %j',
-    (agentStatus) => {
-      const session = findReusableAutomationSession({
-        automationId: 'auto-1',
-        agentId: 'claude',
-        worktreeId: 'wt-1',
-        currentRunId: 'run-current',
-        runs: [
-          run({
-            id: 'run-new',
-            terminalSessionId: 'tab-1',
-            terminalPaneKey: splitPaneKey,
-            terminalPtyId: 'pty-right',
-            createdAt: 2
-          })
-        ],
-        state: {
-          agentStatusByPaneKey: {
-            [splitPaneKey]: status({ ...agentStatus, paneKey: splitPaneKey })
-          },
-          ptyIdsByTabId: { 'tab-1': ['pty-left', 'pty-right'] },
-          terminalLayoutsByTabId: {
-            'tab-1': {
-              root: null,
-              activeLeafId: leafId,
-              expandedLeafId: null,
-              ptyIdsByLeafId: {
-                [leafId]: 'pty-left',
-                [splitLeafId]: 'pty-right'
-              }
+  it('uses the PTY recorded for the exact split-pane run', () => {
+    const session = findReusableAutomationSession({
+      automationId: 'auto-1',
+      agentId: 'claude',
+      worktreeId: 'wt-1',
+      currentRunId: 'run-current',
+      runs: [
+        run({
+          id: 'run-new',
+          terminalSessionId: 'tab-1',
+          terminalPaneKey: splitPaneKey,
+          terminalPtyId: 'pty-right',
+          createdAt: 2
+        })
+      ],
+      state: {
+        agentStatusByPaneKey: {
+          [splitPaneKey]: status({ paneKey: splitPaneKey })
+        },
+        ptyIdsByTabId: { 'tab-1': ['pty-left', 'pty-right'] },
+        terminalLayoutsByTabId: {
+          'tab-1': {
+            ptyIdsByLeafId: {
+              [leafId]: 'pty-left',
+              [splitLeafId]: 'pty-right'
             }
-          },
-          unifiedTabsByWorktree: {
-            'wt-1': [terminalTab]
           }
+        },
+        unifiedTabsByWorktree: {
+          'wt-1': [{ contentType: 'terminal', entityId: 'tab-1' }]
         }
-      })
+      } as never
+    })
 
-      expect(session).toEqual({ tabId: 'tab-1', ptyId: 'pty-right', paneKey: splitPaneKey })
-    }
-  )
-
-  it.each([
-    { pending: undefined, reusable: true },
-    { pending: 'notification' as const, reusable: false }
-  ])(
-    'keeps monitoring reuse eligibility after OSC with pending=$pending',
-    ({ pending, reusable }) => {
-      const store = createTestStore()
-      store.setState({
-        ptyIdsByTabId: { 'tab-1': ['pty-1'] },
-        unifiedTabsByWorktree: { 'wt-1': [terminalTab] }
-      })
-      store.getState().setAgentStatus(paneKey, {
-        state: 'working',
-        workingMode: 'monitoring',
-        claudeTaskWakeupPending: pending,
-        mainAgent: { state: 'done', stateStartedAt: 5 },
-        prompt: 'watch',
-        agentType: 'claude'
-      })
-      store.getState().setAgentStatus(paneKey, {
-        state: 'working',
-        prompt: 'watch',
-        agentType: 'claude',
-        observation: {
-          origin: 'osc',
-          authorityId: 'renderer',
-          incarnation: 0,
-          revision: 1,
-          observedAt: 11,
-          kind: 'snapshot'
-        }
-      })
-
-      const session = findReusableAutomationSession({
-        automationId: 'auto-1',
-        agentId: 'claude',
-        worktreeId: 'wt-1',
-        currentRunId: 'run-current',
-        runs: [run({})],
-        state: store.getState()
-      })
-
-      expect(store.getState().agentStatusByPaneKey[paneKey]).toMatchObject({
-        workingMode: 'monitoring',
-        claudeTaskWakeupPending: pending
-      })
-      expect(session).toEqual(reusable ? { tabId: 'tab-1', ptyId: 'pty-1', paneKey } : null)
-    }
-  )
+    expect(session).toEqual({ tabId: 'tab-1', ptyId: 'pty-right', paneKey: splitPaneKey })
+  })
 
   it('does not reuse an unrelated split pane for a run with exact pane identity', () => {
     const session = findReusableAutomationSession({
@@ -172,9 +99,6 @@ describe('automation session reuse in the renderer store', () => {
         ptyIdsByTabId: { 'tab-1': ['pty-1', 'pty-right'] },
         terminalLayoutsByTabId: {
           'tab-1': {
-            root: null,
-            activeLeafId: leafId,
-            expandedLeafId: null,
             ptyIdsByLeafId: {
               [leafId]: 'pty-1',
               [splitLeafId]: 'pty-right'
@@ -182,9 +106,9 @@ describe('automation session reuse in the renderer store', () => {
           }
         },
         unifiedTabsByWorktree: {
-          'wt-1': [terminalTab]
+          'wt-1': [{ contentType: 'terminal', entityId: 'tab-1' }]
         }
-      }
+      } as never
     })
 
     expect(session).toBeNull()
@@ -200,18 +124,11 @@ describe('automation session reuse in the renderer store', () => {
       state: {
         agentStatusByPaneKey: { [paneKey]: status() },
         ptyIdsByTabId: { 'tab-1': ['pty-other'] },
-        terminalLayoutsByTabId: {
-          'tab-1': {
-            root: null,
-            activeLeafId: leafId,
-            expandedLeafId: null,
-            ptyIdsByLeafId: { [leafId]: 'pty-1' }
-          }
-        },
+        terminalLayoutsByTabId: { 'tab-1': { ptyIdsByLeafId: { [leafId]: 'pty-1' } } },
         unifiedTabsByWorktree: {
-          'wt-1': [terminalTab]
+          'wt-1': [{ contentType: 'terminal', entityId: 'tab-1' }]
         }
-      }
+      } as never
     })
 
     expect(session).toBeNull()

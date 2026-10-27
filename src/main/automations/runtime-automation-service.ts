@@ -11,6 +11,7 @@ import {
 } from '../../shared/tui-agent-config'
 import { launchHeadlessAutomationAgent, runOwnHandle } from './headless-automation-agent-launch'
 import { createRuntimeAutomationRunTerminalObserver } from './runtime-terminal-run-observer'
+import { readAutomationAgentTurn } from '../../shared/automation-agent-turn'
 
 const MAX_REMEMBERED_LAUNCHES = 256
 
@@ -77,6 +78,27 @@ function bindHeadlessRunTerminalRetention(
     terminalClientUse: (run) =>
       run.terminalPtyId ? runtime.readTerminalClientUse(run.terminalPtyId) : 'unknown',
     runTerminalAlive: (run) => runOwnHandle(runtime, run) !== null,
+    runWholeWorkState: (run) => {
+      const handle = runOwnHandle(runtime, run)
+      if (!handle || !run.terminalPaneKey) {
+        return 'unknown'
+      }
+      const rows = runtime
+        .getAgentStatusRowsForPane(run.terminalPaneKey)
+        .filter(
+          (row) =>
+            !row.providerSessionOnly &&
+            !row.programStatusOnly &&
+            !row.restoredUnconfirmed &&
+            !row.connectionId &&
+            (!row.terminalHandle || row.terminalHandle === handle)
+        )
+      return rows.length === 0
+        ? 'unknown'
+        : rows.every((row) => readAutomationAgentTurn(row).wholeWorkEnded)
+          ? 'clear'
+          : 'active'
+    },
     shellAloneAtPrompt: (run) =>
       run.terminalPtyId
         ? runtime.confirmTerminalShellAlone(run.terminalPtyId)
@@ -96,7 +118,7 @@ function bindHeadlessRunTerminalRetention(
       store.getWorktreeMeta(run.workspaceId)?.automationProvenance?.automationRunId === run.id,
     sleepRunWorkspace: async (run) => {
       const ptyId = run.terminalPtyId
-      if (!run.workspaceId || !ptyId) {
+      if (!run.workspaceId || !ptyId || !runOwnHandle(runtime, run)) {
         return false
       }
       try {

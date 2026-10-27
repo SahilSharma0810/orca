@@ -43,6 +43,7 @@ function harness(runs: AutomationRun[]) {
       runKeyedSerializedOperation(lanes, automationId, operation),
     listRuns: () => runs.filter((run) => !forgotten.some((gone) => gone.id === run.id)),
     terminalClientUse: (run) => use.get(run.id) ?? 'unused',
+    runWholeWorkState: (run) => (run.status === 'completed' ? 'clear' : 'unknown'),
     runTerminalAlive: (run) => !dead.has(run.id) && !closed.includes(run.terminalPaneKey ?? ''),
     shellAloneAtPrompt: async (run) => idleShell.has(run.id),
     closeRunTerminal: async (run) => {
@@ -312,6 +313,7 @@ describe('headless run terminal retention', () => {
     const slow = createHeadlessRunTerminalRetention({
       listRuns: () => runs.filter((run) => !h.forgotten.some((gone) => gone.id === run.id)),
       terminalClientUse: () => 'unused',
+      runWholeWorkState: () => 'clear',
       runTerminalAlive: () => true,
       shellAloneAtPrompt: async () => false,
       closeRunTerminal,

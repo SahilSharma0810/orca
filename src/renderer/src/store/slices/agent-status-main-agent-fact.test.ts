@@ -240,17 +240,17 @@ describe('session-boundary done semantics (STA-3386)', () => {
   })
 })
 
-it('clears the live pending task wakeup when a later monitoring row has none', () => {
+it('normalizes and clears pending wakeup evidence on the next host row', () => {
   const store = createTestStore()
-  const status = {
+  const row = {
     state: 'working' as const,
     workingMode: 'monitoring' as const,
+    mainAgent: { state: 'done' as const, stateStartedAt: 5 },
     prompt: 'watch',
-    agentType: 'claude',
-    mainAgent: { state: 'done' as const, stateStartedAt: 5 }
+    agentType: 'claude'
   }
   const normalized = normalizeAgentStatusEvent({
-    ...status,
+    ...row,
     paneKey: PANE,
     connectionId: null,
     receivedAt: 10,
@@ -259,71 +259,63 @@ it('clears the live pending task wakeup when a later monitoring row has none', (
   })
   expect(normalized?.claudeTaskWakeupPending).toBe('notification')
   if (!normalized) {
-    throw new Error('Expected a normalized status')
+    throw new Error('Expected normalized status')
   }
   store.getState().setAgentStatus(PANE, normalized)
-  expect(store.getState().agentStatusByPaneKey[PANE]).toMatchObject({
-    claudeTaskWakeupPending: 'notification'
-  })
-  store.getState().setAgentStatus(PANE, status)
-  expect(store.getState().agentStatusByPaneKey[PANE]).not.toHaveProperty(
-    'claudeTaskWakeupPending',
-    'notification'
-  )
+  expect(store.getState().agentStatusByPaneKey[PANE].claudeTaskWakeupPending).toBe('notification')
+  store.getState().setAgentStatus(PANE, row)
+  expect(store.getState().agentStatusByPaneKey[PANE].claudeTaskWakeupPending).toBeUndefined()
 })
 
-describe('monitoring facts from the host', () => {
-  it.each([
-    'host',
-    'state',
-    'agent',
-    'session',
-    'first-session',
-    'owner',
-    'terminal',
-    'boundary'
-  ] as const)('clears monitoring facts on a %s change', (change) => {
-    const store = createTestStore()
-    store.getState().setAgentStatus(
-      PANE,
-      {
-        state: 'working',
-        workingMode: 'monitoring',
-        claudeTaskWakeupPending: 'notification',
-        mainAgent: { state: 'done', stateStartedAt: 5 },
-        prompt: 'watch',
-        agentType: 'claude'
-      },
-      undefined,
-      { updatedAt: 10 },
-      { connectionId: null, worktreeId: 'wt-1' },
-      change === 'first-session'
-        ? undefined
-        : { providerSession: { key: 'session_id', id: 'session-1' } }
-    )
-    store.getState().setAgentStatus(
-      PANE,
-      {
-        state: change === 'state' ? 'done' : 'working',
-        prompt: 'watch',
-        agentType: change === 'agent' ? 'codex' : 'claude',
-        ...(change === 'boundary' ? { sessionBoundary: true } : {}),
-        ...(change === 'host' ? {} : { observation: osc(1) })
-      },
-      undefined,
-      { updatedAt: 2_000_000 },
-      change === 'owner'
-        ? { connectionId: 'remote-2' }
-        : change === 'terminal'
-          ? { terminalHandle: 'new-terminal' }
-          : undefined,
-      change === 'session' || change === 'first-session'
-        ? { providerSession: { key: 'session_id', id: 'session-2' } }
-        : undefined
-    )
-
-    const entry = store.getState().agentStatusByPaneKey[PANE]
-    expect(entry.workingMode).toBeUndefined()
-    expect(entry.claudeTaskWakeupPending).toBeUndefined()
-  })
+it.each([
+  'host',
+  'state',
+  'agent',
+  'session',
+  'first-session',
+  'owner',
+  'terminal',
+  'boundary'
+] as const)('clears retained monitoring on %s replacement', (change) => {
+  const store = createTestStore()
+  store.getState().setAgentStatus(
+    PANE,
+    {
+      state: 'working',
+      workingMode: 'monitoring',
+      claudeTaskWakeupPending: 'notification',
+      mainAgent: { state: 'done', stateStartedAt: 5 },
+      prompt: 'watch',
+      agentType: 'claude'
+    },
+    undefined,
+    { updatedAt: 10 },
+    { connectionId: null, worktreeId: 'wt-1' },
+    change === 'first-session'
+      ? undefined
+      : { providerSession: { key: 'session_id', id: 'session-1' } }
+  )
+  store.getState().setAgentStatus(
+    PANE,
+    {
+      state: change === 'state' ? 'done' : 'working',
+      prompt: 'watch',
+      agentType: change === 'agent' ? 'codex' : 'claude',
+      ...(change === 'boundary' ? { sessionBoundary: true } : {}),
+      ...(change === 'host' ? {} : { observation: osc(1) })
+    },
+    undefined,
+    { updatedAt: 2_000_000 },
+    change === 'owner'
+      ? { connectionId: 'remote-2' }
+      : change === 'terminal'
+        ? { terminalHandle: 'new-terminal' }
+        : undefined,
+    change === 'session' || change === 'first-session'
+      ? { providerSession: { key: 'session_id', id: 'session-2' } }
+      : undefined
+  )
+  const entry = store.getState().agentStatusByPaneKey[PANE]
+  expect(entry.workingMode).toBeUndefined()
+  expect(entry.claudeTaskWakeupPending).toBeUndefined()
 })
