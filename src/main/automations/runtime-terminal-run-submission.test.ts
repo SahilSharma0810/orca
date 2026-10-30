@@ -82,7 +82,11 @@ async function fixture(
   let incarnation = 'original'
   const runtime: AutomationRunTerminalHost = {
     getTerminalHandleForPaneKey: () => 'handle',
-    getTerminalPromptRequestBinding: () => ({ ptyId: 'pty', processIncarnation: incarnation }),
+    getTerminalPromptRequestBinding: () => ({
+      ptyId: 'pty',
+      processIncarnation: incarnation,
+      generation: 1
+    }),
     getAgentStatusRowsForPane: () => [row],
     readObservedAgentStatusPaneIdentityFn: () => ({
       kind: 'observed',
