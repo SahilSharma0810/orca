@@ -1,3 +1,5 @@
+import type { RuntimePtyTabCloseAuthority } from './runtime-terminal-state-records'
+import type { RuntimeSessionTabCloseReason } from '../../shared/runtime-types'
 import type { RuntimeMobileSessionTabCloseResult } from '../../shared/runtime-types'
 import type { ClientSessionTabSelectionStore } from './client-session-tab-selection'
 
@@ -42,4 +44,15 @@ export function refusedMobileSessionTabClose(
     refusalReason,
     ...(options.snapshotRepublished ? { snapshotRepublished: true as const } : {})
   } as MobileSessionTabCloseOutcome
+}
+
+export type MobileSessionTabCloseOptions = {
+  reason?: RuntimeSessionTabCloseReason
+  expectedPublicationEpoch?: string
+  expectedTerminalHandle?: string
+  clientNavigationId?: string
+  localPtyTeardownOwnedExternally?: boolean
+  expectedPtyCloseAuthority?: RuntimePtyTabCloseAuthority
+  force?: boolean
+  beforeAction?: () => void
 }

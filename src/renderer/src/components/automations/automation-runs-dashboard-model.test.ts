@@ -103,3 +103,36 @@ describe('automation runs dashboard model', () => {
     })
   })
 })
+
+it('keeps Launched terminal deliveries in history while Chat and pending work remain Active', () => {
+  const local = row('local', 'Local', {
+    authority: { kind: 'desktop' },
+    selector: { kind: 'self' }
+  })
+  const entries = buildAutomationRunsDashboardEntries(
+    [local],
+    new Map([
+      [
+        local.key,
+        [
+          run('delivered', 'local', 1, 'dispatched'),
+          { ...run('chat', 'local', 2, 'dispatched'), sessionKind: 'chat' as const },
+          run('pending', 'local', 3, 'pending'),
+          run('claim', 'local', 4, 'dispatching')
+        ]
+      ]
+    ])
+  )
+  const filtered = (status: 'all' | 'active') =>
+    filterAutomationRunsDashboardEntries({ entries, status, query: '', hostKeys: [] }).map(
+      (entry) => entry.run.id
+    )
+  expect(filtered('all')).toContain('delivered')
+  expect(filtered('active')).toEqual(['claim', 'pending', 'chat'])
+  expect(countAutomationRunOutcomes(entries, 10)).toEqual({
+    successful24h: 0,
+    failed24h: 0,
+    successful7d: 0,
+    failed7d: 0
+  })
+})

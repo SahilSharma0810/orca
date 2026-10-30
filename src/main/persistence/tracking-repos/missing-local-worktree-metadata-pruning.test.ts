@@ -532,3 +532,23 @@ describe('pruneSessionlessMissingLocalWorktreeMetadataForRepo', () => {
     expect(pruneCaptured(state, scan, [foreignWindowsId], 'linux')).toEqual([])
   })
 })
+
+it.each(['terminal', 'chat'] as const)(
+  'delivery-only %s history releases metadata independently of Done',
+  (sessionKind) => {
+    const state = makeState()
+    state.worktreeMeta[LIVE_ID] = makeMeta(LIVE_ID)
+    state.automationRuns = [
+      {
+        id: 'run',
+        automationId: 'automation',
+        workspaceId: LIVE_ID,
+        status: 'dispatched',
+        sessionKind
+      } as never
+    ]
+    expect(pruneCaptured(state, capture(state), [LIVE_ID])).toEqual(
+      sessionKind === 'chat' ? [] : [LIVE_ID]
+    )
+  }
+)

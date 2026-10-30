@@ -1,9 +1,6 @@
+import { isAutomationRunHistory } from '../../../shared/automation-run-retention'
 import { MAX_AUTOMATION_RUNS_PER_AUTOMATION } from '../../../shared/automation-run-retention'
-import {
-  isFinalAutomationRunStatus,
-  type Automation,
-  type AutomationRun
-} from '../../../shared/automations-types'
+import type { Automation, AutomationRun } from '../../../shared/automations-types'
 import type { PersistedState } from '../../../shared/persisted-state-types'
 import { selectNewRows } from './orcad-catalog-row-identity'
 
@@ -75,7 +72,7 @@ function assertRunRetentionCapacity(
     ...existingRuns.filter((entry) => incomingAutomationIds.has(entry.automationId)),
     ...incomingRuns
   ]) {
-    if (!isFinalAutomationRunStatus(run.status)) {
+    if (!isAutomationRunHistory(run)) {
       throw new Error(`orcad_migration_dormant_automation_run_active:${run.automationId}`)
     }
     const ids = idsByAutomation.get(run.automationId) ?? new Set<string>()

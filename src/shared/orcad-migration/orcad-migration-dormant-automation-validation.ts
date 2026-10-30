@@ -77,7 +77,7 @@ function parseAutomation(value: unknown): Automation {
   if (!isMigratedAutomation(copy)) {
     throw new Error('orcad_migration_dormant_automation_invalid')
   }
-  // A disallowed flag or Reuse with extras would otherwise persist and fail every later run.
+  // Disallowed launch flags must not enter persisted automation definitions.
   try {
     assertAutomationExtraAgentArgs(copy)
   } catch {
@@ -162,7 +162,10 @@ function isMigratedAutomationRun(value: unknown): value is AutomationRun {
   parseContext(record.sourceContext, 'task-source')
   requiredString(record.title, 'orcad_migration_dormant_automation_run_title_invalid')
   requiredFinite(record.scheduledFor, 'orcad_migration_dormant_automation_run_schedule_invalid')
-  if (!FINAL_RUN_STATUSES.has(record.status)) {
+  if (
+    !FINAL_RUN_STATUSES.has(record.status) &&
+    !(record.status === 'dispatched' && record.sessionKind === 'terminal')
+  ) {
     throw new Error('orcad_migration_dormant_automation_run_status_invalid')
   }
   if (record.trigger !== 'scheduled' && record.trigger !== 'manual') {

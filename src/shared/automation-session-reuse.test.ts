@@ -1,5 +1,4 @@
 import { describe, expect, it } from 'vitest'
-import type { AgentStatusPayload } from './agent-status-types'
 import type { AutomationRun } from './automations-types'
 import { findReusableAutomationRun } from './automation-session-reuse'
 
@@ -33,16 +32,7 @@ function run(overrides: Partial<AutomationRun>): AutomationRun {
 function find(
   runs: AutomationRun[],
   options: {
-    status?: Pick<
-      AgentStatusPayload,
-      | 'state'
-      | 'agentType'
-      | 'workingMode'
-      | 'mainAgent'
-      | 'claudeTaskWakeupPending'
-      | 'sessionBoundary'
-      | 'subagents'
-    >
+    status?: { state: string; agentType?: string }
     livePtyIds?: string[]
   } = {}
 ): string | null {
@@ -50,7 +40,7 @@ function find(
   const statusesByPaneKey = new Map(
     runs.map((entry) => [
       entry.terminalPaneKey,
-      options.status ?? { state: 'done' as const, agentType: 'claude' }
+      options.status ?? { state: 'done', agentType: 'claude' }
     ])
   )
   return findReusableAutomationRun({
@@ -65,35 +55,7 @@ function find(
 }
 
 describe('automation session reuse selection', () => {
-  it.each([
-    { workingMode: undefined },
-    { mainAgent: undefined },
-    { state: 'waiting' },
-    { state: 'blocked' },
-    { mainAgent: { state: 'working', stateStartedAt: 1 } },
-    { mainAgent: { state: 'waiting', stateStartedAt: 1 } },
-    { claudeTaskWakeupPending: 'notification' },
-    { claudeTaskWakeupPending: 'finishing-turn' },
-    { sessionBoundary: true },
-    { subagents: [{ id: 'child', state: 'working', startedAt: 1 }] },
-    { agentType: 'codex' }
-  ] satisfies Partial<AgentStatusPayload>[])(
-    'rejects unfinished, permission, wakeup, boundary or other-agent evidence %j',
-    (override) => {
-      expect(
-        find([run({})], {
-          status: {
-            state: 'working',
-            workingMode: 'monitoring',
-            mainAgent: { state: 'done', stateStartedAt: 1 },
-            ...override
-          }
-        })
-      ).toBeNull()
-    }
-  )
-
-  it('picks the newest completed run of this automation in this workspace', () => {
+  it('picks the newest compatible live run of this automation in this workspace', () => {
     expect(
       find([
         run({ id: 'run-old', terminalPaneKey: 'tab-old:leaf-1', createdAt: 1 }),
@@ -134,7 +96,7 @@ describe('automation session reuse selection', () => {
         run({ id: 'run-late', createdAt: 2, dispatchedAt: 3 }),
         run({ id: 'run-early', status: 'dispatch_failed', createdAt: 1, dispatchedAt: 4 })
       ])
-    ).toBeNull()
+    ).toBe('run-early')
     expect(
       find([
         run({ id: 'run-early', createdAt: 1, dispatchedAt: 4 }),
@@ -143,35 +105,27 @@ describe('automation session reuse selection', () => {
     ).toBe('run-early')
   })
 
-  it('never picks a pane whose newest run is still working in it', () => {
-    expect(
-      find([
-        run({ id: 'run-done', createdAt: 1 }),
-        run({ id: 'run-working', status: 'dispatched', createdAt: 2 })
-      ])
-    ).toBeNull()
-  })
-
-  it('never picks an older record of a pane a newer run since used', () => {
-    expect(
-      find([
-        run({ id: 'run-done', createdAt: 1 }),
-        run({ id: 'run-reused-failed', status: 'dispatch_failed', createdAt: 2 })
-      ])
-    ).toBeNull()
-  })
+  it.each(['dispatched', 'dispatch_failed', 'completed'] as const)(
+    'reuses the newest live owner regardless of its %s bookkeeping status',
+    (status) => {
+      expect(find([run({ createdAt: 1 }), run({ id: 'latest', status, createdAt: 2 })])).toBe(
+        'latest'
+      )
+    }
+  )
 
   it('does not reuse legacy runs without exact pane and PTY identity', () => {
     expect(find([run({ terminalPaneKey: null })])).toBeNull()
     expect(find([run({ terminalPtyId: null })])).toBeNull()
   })
 
-  it.each([
-    ['a working agent', { state: 'working', agentType: 'claude' }],
-    ['another agent', { state: 'done', agentType: 'codex' }]
-  ] satisfies [string, AgentStatusPayload][])('rejects a pane holding %s', (_label, status) => {
-    expect(find([run({})], { status })).toBeNull()
-  })
+  it.each(['working', 'blocked', 'waiting', 'done'])(
+    'addresses the same live provider while its state is %s',
+    (state) => {
+      expect(find([run({})], { status: { state, agentType: 'claude' } })).toBe('run-1')
+      expect(find([run({})], { status: { state, agentType: 'codex' } })).toBeNull()
+    }
+  )
 
   it('accepts an idle agent whose type the host could not tell', () => {
     expect(find([run({})], { status: { state: 'done', agentType: 'unknown' } })).toBe('run-1')

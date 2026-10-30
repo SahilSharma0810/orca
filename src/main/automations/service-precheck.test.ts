@@ -1,3 +1,8 @@
+import { setSshTargetRegistryHandlers } from '../ssh/targets/ssh-target-registry'
+import {
+  recordSshCredentialDeclined,
+  resetSshCredentialDeclinesForTests
+} from '../ssh/ssh-credential-decline'
 import {
   closeTestStores,
   createSqliteTestStore,
@@ -73,6 +78,16 @@ function mutateDataFile(
 
 describe('AutomationService prechecks', () => {
   beforeEach(() => {
+    setSshTargetRegistryHandlers({
+      connect: null,
+      getState: () => ({
+        targetId: 'ssh-test',
+        status: 'connected',
+        error: null,
+        reconnectAttempt: 0
+      })
+    })
+    resetSshCredentialDeclinesForTests()
     hasCreatedStoreInCase = false
     resetRetirementCollisionKeyCacheForTests()
     testState.dir = mkdtempSync(join(tmpdir(), 'orca-automations-test-'))
@@ -81,6 +96,8 @@ describe('AutomationService prechecks', () => {
   })
 
   afterEach(async () => {
+    setSshTargetRegistryHandlers({ connect: null, getState: null })
+    resetSshCredentialDeclinesForTests()
     await closeTestStores()
     vi.useRealTimers()
     rmSync(testState.dir, { recursive: true, force: true })
@@ -271,4 +288,92 @@ describe('AutomationService prechecks', () => {
     expect(dispatched).toEqual(['scheduled', 'manual'])
     service.stop()
   })
+  it.each(['connect', 'declined', 'replaced'] as const)(
+    'runs SSH no-prompt preflight before precheck: %s',
+    async (mode) => {
+      vi.setSystemTime(new Date('2026-05-13T08:00:00Z'))
+      const store = await createStore()
+      store.addSshTarget({
+        id: 'ssh-test',
+        label: 'Build',
+        host: 'host',
+        port: 22,
+        username: 'test',
+        generation: 1
+      })
+      vi.setSystemTime(new Date('2026-05-13T08:00:00Z'))
+      store.addRepo(makeRepo({ connectionId: 'ssh-test' }))
+      const automation = store.createAutomation({
+        name: 'SSH',
+        prompt: 'Check',
+        agentId: 'claude',
+        projectId: 'r1',
+        workspaceMode: 'new_per_run',
+        timezone: 'UTC',
+        rrule: 'FREQ=DAILY;BYHOUR=9;BYMINUTE=0',
+        dtstart: Date.parse('2026-05-13T00:00:00Z'),
+        precheck: { command: 'true', timeoutSeconds: 30 }
+      })
+      let connected = false
+      const order: string[] = []
+      const connect = vi.fn(async (_id: string, options?: { automatic?: boolean }) => {
+        expect(options).toEqual({ automatic: true, interactive: false })
+        order.push('connect')
+        connected = true
+        if (mode === 'replaced') {
+          store.updateAutomation(automation.id, { prompt: 'Changed' })
+        }
+        return {
+          targetId: 'ssh-test',
+          status: 'connected' as const,
+          error: null,
+          reconnectAttempt: 0
+        }
+      })
+      setSshTargetRegistryHandlers({
+        connect,
+        getState: () => ({
+          targetId: 'ssh-test',
+          status: connected ? 'connected' : 'disconnected',
+          error: null,
+          reconnectAttempt: 0
+        })
+      })
+      if (mode === 'declined') {
+        recordSshCredentialDeclined('ssh-test')
+      }
+      runAutomationPrecheckMock.mockImplementation(async () => {
+        order.push('precheck')
+        return null
+      })
+      const send = vi.fn(async () => {
+        order.push('send')
+        return { workspaceId: 'wt1', terminalSessionId: 'tab' }
+      })
+      const service = new AutomationService(store, {
+        allowRemoteHostScheduling: true,
+        headlessDispatcher: send
+      })
+      vi.setSystemTime(automation.nextRunAt)
+      service.setRendererReady()
+      try {
+        await vi.waitFor(() =>
+          expect(store.listAutomationRuns(automation.id)[0]?.status).toMatch(
+            /^(dispatched|skipped_unavailable)$/
+          )
+        )
+        if (mode === 'connect') {
+          expect(order).toEqual(['connect', 'precheck', 'send'])
+        } else {
+          expect(runAutomationPrecheckMock).not.toHaveBeenCalled()
+          expect(send).not.toHaveBeenCalled()
+        }
+        if (mode === 'declined') {
+          expect(connect).not.toHaveBeenCalled()
+        }
+      } finally {
+        service.stop()
+      }
+    }
+  )
 })

@@ -1,3 +1,4 @@
+import type { WorktreeTerminalSleepOptions } from './worktree-terminal-stop-options'
 import { OrcaRuntimeWithResolveTerminalSplitSourceAuthority } from '../launch/terminal-split-source-authority'
 import type { ResolvedWorktree } from '../../runtime-worktree-path-identity'
 import { worktreeIdentityKey } from '../../../../shared/worktree/id'
@@ -33,7 +34,7 @@ export abstract class OrcaRuntimeWithStopTerminalsForWorktree extends OrcaRuntim
   protected abstract sleepResolvedWorktreeTerminals(
     worktree: ResolvedWorktree,
     scope: WorktreeSleepScope,
-    soleLivePtyId?: string
+    options?: WorktreeTerminalSleepOptions
   ): Promise<RuntimeWorktreeTerminalSleepResult>
 
   private getWorktreeHostFence(
@@ -253,7 +254,7 @@ export abstract class OrcaRuntimeWithStopTerminalsForWorktree extends OrcaRuntim
   /** With `soleLivePtyId`, stops nothing unless that PTY is the worktree's only live terminal. */
   async sleepTerminalsForWorktree(
     worktreeSelector: string,
-    options: { soleLivePtyId?: string } = {}
+    options: WorktreeTerminalSleepOptions = {}
   ): Promise<RuntimeWorktreeTerminalSleepResult> {
     const worktree = await this.resolveWorkspaceSelector(worktreeSelector)
     const scope = resolveSleepScope(this.store?.getRepos() ?? [], worktree)
@@ -261,9 +262,9 @@ export abstract class OrcaRuntimeWithStopTerminalsForWorktree extends OrcaRuntim
     if (existing) {
       return await existing
     }
-    if (options.soleLivePtyId) {
+    if (options.soleLivePtyId || options.beforeAction) {
       // Why not shared: a full sleep joining this one would get back a sleep that stopped nothing.
-      return await this.sleepResolvedWorktreeTerminals(worktree, scope, options.soleLivePtyId)
+      return await this.sleepResolvedWorktreeTerminals(worktree, scope, options)
     }
 
     const sleeping = this.sleepResolvedWorktreeTerminals(worktree, scope)
