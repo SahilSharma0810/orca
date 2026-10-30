@@ -25,7 +25,7 @@ export type TuiAgentConfig = {
   detectCmd: string
   /** Additional executable names that identify the same agent on PATH. */
   detectCmdAliases?: readonly string[]
-  /** Other commands that must also be present before this agent counts as installed. */
+  /** Other commands that must also be present before this agent counts as installed. Distro CLIs only: a WSL-host launch refuses Windows-only ones. */
   detectRequiredCommands?: readonly string[]
   /** Detection runtimes where this launch mode is not available as a detected agent. */
   detectUnsupportedRuntimes?: readonly TuiAgentDetectionRuntime[]
@@ -64,7 +64,7 @@ export type TuiAgentConfig = {
   composerReadyCaptures?: readonly string[]
   /** Delay before one extra blind submit Enter, for agents that render their composer before Enter is live (codex); a no-op if the first Enter landed. */
   submitRetryDelayMs?: number
-  /** How long a launch keeps re-pressing Enter at `submitRetryDelayMs` while its composer holds the prompt, for TUIs that paint it before their session can submit (dsh). */
+  /** How long an agent-prompt send keeps re-pressing Enter at `submitRetryDelayMs` while its composer holds the prompt, for TUIs that paint it before their session can submit (dsh). */
   submitRetryBudgetMs?: number
   /** Extra ms per logical prompt line before Enter, for TUIs that expand multiline paste slowly (antigravity). */
   submitLineSettleMsPerLine?: number

@@ -79,8 +79,7 @@ describe('MobileHostCard', () => {
   })
 
   it('keeps rendering the last proven counts after a failed refresh', async () => {
-    // The regression this card shipped once: the caller dropped the counts the
-    // failure path deliberately preserved.
+    // Regress caller dropping counts deliberately preserved on failure.
     expect(await renderCard(markHomeWorktreeCatalogUnavailable(loaded, 'host-1'))).toContain(
       'Last known: 12 worktrees · 2 active'
     )
@@ -95,7 +94,7 @@ describe('MobileHostCard', () => {
   it('names the relay while the dial is still in flight', async () => {
     const lines = await renderCard(undefined, {
       state: 'connecting',
-      verdict: { kind: 'normal', label: 'Connecting via Relay…' },
+      verdict: { kind: 'normal', label: 'Connecting via Relay…', dialing: true },
       path: 'relay'
     })
 
@@ -106,7 +105,7 @@ describe('MobileHostCard', () => {
   it('names the relay while a failed direct dial is still retrying', async () => {
     const lines = await renderCard(undefined, {
       state: 'reconnecting',
-      verdict: { kind: 'normal', label: 'Connecting via Relay…' },
+      verdict: { kind: 'normal', label: 'Connecting via Relay…', dialing: true },
       path: 'relay'
     })
 
@@ -127,7 +126,7 @@ describe('MobileHostCard', () => {
   it('does not guess a direct path before the dial resolves', async () => {
     const lines = await renderCard(undefined, {
       state: 'connecting',
-      verdict: { kind: 'normal', label: 'Connecting…' },
+      verdict: { kind: 'normal', label: 'Connecting…', dialing: true },
       path: 'lan'
     })
 

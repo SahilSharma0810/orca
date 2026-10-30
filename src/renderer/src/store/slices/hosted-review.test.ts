@@ -605,6 +605,8 @@ describe('hosted review slice', () => {
     expect(fetchHostedReviewForBranch).toHaveBeenCalledWith('/repo', 'feature/test', {
       force: true,
       repoId: 'repo-id',
+      // A card refresh follows a user act, so it may start a stopped WSL distro.
+      wakeWslDistro: true,
       linkedGitHubPR: null,
       linkedGitLabMR: 33,
       linkedBitbucketPR: null,
@@ -704,8 +706,7 @@ describe('hosted review slice', () => {
       })
     ).resolves.toEqual(mergedAtHead)
 
-    // Worktree advanced off the merged head: the branch-scoped cache is fresh,
-    // but the merged review is no longer valid for the new head, so refetch.
+    // Fresh branch cache can hold a merged review invalid for advanced worktree HEAD; refetch.
     await expect(
       store.getState().fetchHostedReviewForBranch('/repo', 'feature/merged', {
         currentHeadOid: 'bbbbbbb'
@@ -807,9 +808,7 @@ describe('hosted review slice', () => {
       })
     ).resolves.toEqual(mergedBehindHead)
 
-    // Why one call: a merged review confirmed for this worktree head is not
-    // stale, so the second read must reuse the branch-scoped cache instead of
-    // refetching every poll.
+    // Confirmed-contained merged review remains valid; reuse branch cache instead of polling provider every read.
     await expect(
       store.getState().fetchHostedReviewForBranch('/repo', 'feature/merged', {
         currentHeadOid: 'bbbbbbb'
@@ -852,8 +851,7 @@ describe('hosted review slice', () => {
     mockApi.hostedReview.forBranch.mockRejectedValueOnce(new Error('transient gh failure'))
 
     try {
-      // Head advanced to bbbbbbb; a failed lookup must not preserve the stale
-      // merged review for the old head.
+      // Failure after head advance must not preserve the prior merged review.
       await expect(
         store.getState().fetchHostedReviewForBranch('/repo', 'feature/merged', {
           force: true,

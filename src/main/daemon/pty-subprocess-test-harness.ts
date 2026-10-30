@@ -7,7 +7,7 @@ import { join } from 'node:path'
 
 const ORCA_SHELL_WRAPPER_ENV = [
   'ORCA_OPENCODE_CONFIG_DIR',
-  'ORCA_MIMOCODE_HOME',
+  'ORCA_MIMOCODE_CONFIG_DIR',
   'ORCA_PI_CODING_AGENT_DIR',
   'ORCA_OMP_CODING_AGENT_DIR',
   'ORCA_OMP_STATUS_EXTENSION',
@@ -58,11 +58,6 @@ export function createConptyPreludeSender(): (cb: (data: string) => void) => voi
       queueMicrotask(() => cb(CONPTY_MOCK_PRELUDE))
     }
   }
-}
-
-/** What a mocked pane printed before the test's own output; the replayed prelude on Windows. */
-export function mockConptyStartupOutput(): string[] {
-  return process.platform === 'win32' ? [CONPTY_MOCK_PRELUDE] : []
 }
 
 export function mockPtyProcess(pid = 12345): MockPtyProcess {

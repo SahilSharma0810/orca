@@ -1,3 +1,8 @@
+import {
+  automationChatSupport,
+  automationDraftLaunchSetup,
+  automationLaunchWorkspace
+} from './automation-launch-surface'
 import { toast } from 'sonner'
 import type {
   Automation,
@@ -15,7 +20,6 @@ import {
   type AutomationDispatchResult
 } from './automation-row-action-dispatch'
 import { buildDraftPrecheck } from './automation-draft-model'
-import { hasExtraAgentArgs } from '../../../../shared/automation-extra-agent-args'
 import { buildAutomationRunContextForRepo } from './automation-run-context'
 import { resolveAutomationSetupDecisionForSave } from './automation-setup-decision'
 import {
@@ -29,7 +33,7 @@ import type { AutomationSaveContext } from './automation-save-context'
 /** Saves an Orca automation, including destination validation and host moves. */
 export async function saveOrcaAutomation(
   context: AutomationSaveContext,
-  time: { hour: number; minute: number; now: number }
+  time: { hour: number; minute: number; now: number; surface: 'chat' | 'terminal' }
 ): Promise<void> {
   const { store, local, setup, destination, destinationForm, pageRefresh } = context
   const { repos, projectHostSetups } = store
@@ -59,8 +63,7 @@ export async function saveOrcaAutomation(
   } = destination
   const { dialogRepos, editHostResolution, automationDialogTarget } = destinationForm
 
-  // Re-check the destination at the start of the transaction. This keeps all
-  // side effects (hook probes and trust prompts) behind the destination fence.
+  // Fence the destination before hook probes/trust prompts or any other transaction side effect.
   const createCheck = editingAutomationId === null ? createDestination.check(draft.projectId) : null
   if (createCheck && !createCheck.ok) {
     setEditorNotice(createCheck.notice)
@@ -153,15 +156,23 @@ export async function saveOrcaAutomation(
     currentAutomation = (reread.ok ? reread.value : null) ?? currentAutomation
   }
 
+  const surface =
+    time.surface === 'chat' &&
+    draft.surface === undefined &&
+    automationChatSupport(
+      useAppStore.getState(),
+      draft,
+      automationLaunchWorkspace(draft, setupResolution ?? undefined)
+    ) === false
+      ? 'terminal'
+      : time.surface
+  const launchSetup = automationDraftLaunchSetup(draft, surface, currentAutomation)
   const updates: AutomationUpdateInput = {
     name: draft.name,
     prompt: draft.prompt,
     precheck,
     agentId: draft.agentId,
-    // Sent only when it carries or clears extras, so other edits stay legacy-shaped.
-    ...(hasExtraAgentArgs(draft.extraAgentArgs) || currentAutomation?.extraAgentArgs
-      ? { extraAgentArgs: draft.extraAgentArgs }
-      : {}),
+    ...launchSetup,
     runContext,
     projectId: draft.projectId,
     workspaceMode: draft.workspaceMode,
@@ -181,7 +192,7 @@ export async function saveOrcaAutomation(
     prompt: draft.prompt,
     precheck,
     agentId: draft.agentId,
-    ...(hasExtraAgentArgs(draft.extraAgentArgs) ? { extraAgentArgs: draft.extraAgentArgs } : {}),
+    ...launchSetup,
     runContext,
     projectId: draft.projectId,
     workspaceMode: draft.workspaceMode,

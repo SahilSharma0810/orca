@@ -40,17 +40,25 @@ import {
 } from '../../../../shared/tui-agent-launch-defaults'
 import { isTuiAgentEnabled } from '../../../../shared/tui-agent-selection'
 import { getAgentCatalog } from '@/lib/agent-catalog'
-import { agentChoiceOpensAsChat } from '@/lib/host-chat-program'
+import {
+  agentChoiceOpensAsChat,
+  readChatProgram,
+  resolveChatProgramContext
+} from '@/lib/host-chat-program'
 import { useAppStore } from '@/store'
+import { readNativeDetectedAgents } from '@/store/slices/local-detected-agent-store-state'
 import { useDetectedAgents, type AgentDetectionTarget } from '@/hooks/useDetectedAgents'
 import { AgentDefaultSetting } from './AgentDefaultSetting'
 import { AgentDetectionCatalog } from './AgentDetectionCatalog'
 import type { AgentCatalogRowProps } from './AgentCatalogRow'
 import { HostAgentEnvironmentEditor } from './HostAgentEnvironmentEditor'
 import { buildCodexSessionSourceHomeControl } from './codex-session-source-home-control'
-import { buildDefaultAgentOpensAs } from './native-chat-provider-choice'
-import { useHostStructuredAgentsVersion } from '@/lib/chat-provider-agents'
-import { readNativeDetectedAgents } from '@/store/slices/local-detected-agent-store-state'
+import { buildAgentOpensAs } from './native-chat-provider-choice'
+import { AgentChatRuntimeArea } from './AgentChatChoiceControls'
+import { chatProviderAgents, useHostStructuredAgentsVersion } from '@/lib/chat-provider-agents'
+import { readHostStructuredAgents } from '@/runtime/host-structured-agents'
+import { LOCAL_EXECUTION_HOST_ID } from '../../../../shared/execution-host'
+import { isNativeChatEnabled } from '../../../../shared/structured-native-chat-launch-route'
 import { translate } from '@/i18n/i18n'
 
 export type AgentPermissionsRenderer = (props: AgentPermissionsSettingProps) => React.ReactNode
@@ -64,6 +72,7 @@ export function AgentLaunchSettingsCatalog({
   refreshSettings,
   autoSupported = true,
   nativeChatPermissionsSupported = false,
+  chatOwnSupported = false,
   local
 }: {
   settings: AgentLaunchSettings
@@ -74,6 +83,7 @@ export function AgentLaunchSettingsCatalog({
   refreshSettings?: () => void
   autoSupported?: boolean
   nativeChatPermissionsSupported?: boolean
+  chatOwnSupported?: boolean
   local?: {
     settings: GlobalSettings
     saveEnvironment: (agent: TuiAgent, value: Record<string, string>) => Promise<void>
@@ -85,7 +95,7 @@ export function AgentLaunchSettingsCatalog({
     detectionFailed,
     isRefreshing,
     refresh
-  } = useDetectedAgents(detectionTarget)
+  } = useDetectedAgents(detectionTarget, 'all')
   const detectedIds = useMemo(() => (detected ? new Set(detected) : null), [detected])
   useHostStructuredAgentsVersion()
   const installedHere = useAppStore(readNativeDetectedAgents)
@@ -101,11 +111,42 @@ export function AgentLaunchSettingsCatalog({
       ? agentChoiceOpensAsChat(state, chosen, workspace, detected)
       : false
   )
+  // The chat-or-CLI choice is this computer's, so a paired host's page doesn't offer it.
+  const chatAgents =
+    local && isNativeChatEnabled(local.settings)
+      ? chatProviderAgents(LOCAL_EXECUTION_HOST_ID, undefined)
+      : []
+  const managedChatAgents = new Set(
+    readHostStructuredAgents(LOCAL_EXECUTION_HOST_ID, undefined)
+      ?.filter((row) => row.managedRuntime)
+      .map((row) => row.agent)
+  )
+  // Agents whose chat program is here without their CLI, like a downloaded chat runtime, are installed for chat.
+  const chatOnlyKey = useAppStore((state) => {
+    if (chatAgents.length === 0) {
+      return ''
+    }
+    const context = resolveChatProgramContext(state, workspace)
+    return chatAgents
+      .filter(
+        (agent) =>
+          !installedHere?.includes(agent) &&
+          readChatProgram(state, agent, context, installedHere) === 'available'
+      )
+      .join(' ')
+  })
+  const chatOnly = new Set(chatOnlyKey.split(' '))
   const catalog = getAgentCatalog()
   const detectedAgents =
     detectedIds === null ? [] : catalog.filter((agent) => detectedIds.has(agent.id))
+  const installedAgents = catalog.filter(
+    (agent) => detectedIds?.has(agent.id) || chatOnly.has(agent.id)
+  )
   const undetectedAgents = catalog.filter(
-    (agent) => detectedIds !== null && !detectedIds.has(agent.id)
+    (agent) =>
+      !detectedIds?.has(agent.id) &&
+      !chatOnly.has(agent.id) &&
+      (detectedIds !== null || chatAgents.includes(agent.id))
   )
   const save = (mutation: AgentLaunchSettingsMutation): void => {
     const scopedMutation =
@@ -127,6 +168,7 @@ export function AgentLaunchSettingsCatalog({
     const chatSupport = agentChatPermissionModes(agent)
     return {
       choices,
+      chatOwnSupported,
       ...resolved,
       terminalChoice:
         agentPermissionArgs(agent, resolved.choice) ||
@@ -173,7 +215,7 @@ export function AgentLaunchSettingsCatalog({
     autoSupported,
     save
   })
-  const rowProps = (
+  const cliRowProps = (
     agent: (typeof catalog)[number],
     isDetected: boolean
   ): AgentCatalogRowProps => ({
@@ -228,6 +270,30 @@ export function AgentLaunchSettingsCatalog({
         ? buildCodexSessionSourceHomeControl(local.settings, local.updateSettings)
         : undefined
   })
+  const rowProps = (
+    agent: (typeof catalog)[number],
+    listedInstalled: boolean
+  ): AgentCatalogRowProps => {
+    const isDetected = listedInstalled && detectedIds?.has(agent.id) === true
+    return {
+      ...cliRowProps(agent, isDetected),
+      opensAs: local
+        ? buildAgentOpensAs({
+            agent: agent.id,
+            cliDetected: installedHere === null ? null : installedHere.includes(agent.id),
+            chatProgramHere: chatOnly.has(agent.id),
+            settings: local.settings,
+            updateSettings: local.updateSettings
+          })
+        : undefined,
+      chatRuntime:
+        chatAgents.includes(agent.id) &&
+        managedChatAgents.has(agent.id) &&
+        isTuiAgentEnabled(agent.id, settings.disabledTuiAgents) ? (
+          <AgentChatRuntimeArea agent={agent.id} label={agent.label} />
+        ) : undefined
+    }
+  }
   return (
     <>
       <AgentDefaultSetting
@@ -241,29 +307,18 @@ export function AgentLaunchSettingsCatalog({
           'settings.agents.hostDefaults',
           'Defaults for new agents on the selected host.'
         )}
-        // The chat-or-CLI choice is this computer's, so a paired host's page doesn't offer it.
-        opensAs={
-          local
-            ? buildDefaultAgentOpensAs({
-                defaultAgent: settings.defaultTuiAgent,
-                settings: local.settings,
-                updateSettings: local.updateSettings,
-                installedHere
-              })
-            : undefined
-        }
         onSetDefault={(agent) => save({ type: 'default', agent })}
         defaultOpensAsChat={defaultOpensAsChat}
       />
       {permissionSettings ? (
         <AllAgentsPermissionSetting
+          chatOwnSupported={chatOwnSupported}
           choice={permissionSettings.agentPermissionDefault ?? 'own'}
           withoutAutoChoice={sharedChoice(
             PERMISSION_CHOICE_AGENTS.filter(
               (agent) => !agentPermissionChoices(agent).includes('auto')
             ).map((agent) => resolveAgentPermission(agent, permissionSettings).choice)
           )}
-          ownChoiceCount={Object.keys(permissionSettings.agentPermissionOverrides ?? {}).length}
           onChange={(choice) => save({ type: 'permission', choice })}
           onChangeWithoutAuto={(choice) => save({ type: 'permission', choice, withoutAuto: true })}
         />
@@ -282,7 +337,7 @@ export function AgentLaunchSettingsCatalog({
             autoSupported
           })}
       <AgentDetectionCatalog
-        detectedAgents={detectedAgents}
+        detectedAgents={installedAgents}
         undetectedAgents={undetectedAgents}
         detectionPending={detectedIds === null}
         detectionFailed={detectionFailed}
@@ -303,4 +358,28 @@ export function AgentLaunchSettingsCatalog({
 
 function sharedChoice(choices: readonly AgentPermissionChoice[]): AgentPermissionChoice | null {
   return choices.length > 0 && choices.every((choice) => choice === choices[0]) ? choices[0] : null
+}
+
+export function AgentLaunchSettingsLoading(): React.JSX.Element {
+  return (
+    <fieldset disabled className="min-w-0 space-y-8">
+      <AgentDefaultSetting
+        defaultAgent="blank"
+        detectedIds={null}
+        enabledDetectedAgents={[]}
+        catalog={[]}
+        description={translate(
+          'settings.agents.hostDefaults',
+          'Defaults for new agents on the selected host.'
+        )}
+        onSetDefault={() => {}}
+      />
+      <AllAgentsPermissionSetting
+        choice={null}
+        withoutAutoChoice={null}
+        onChange={() => {}}
+        onChangeWithoutAuto={() => {}}
+      />
+    </fieldset>
+  )
 }

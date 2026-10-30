@@ -1,13 +1,7 @@
-/**
- * Which previous run's agent a `reuseSession` automation sends its next prompt to. One rule for
- * the desktop and a headless host; each supplies its own read of the pane's status and liveness.
- */
-import type { AgentStatusPayload } from './agent-status-types'
+/** Share previous-agent reuse policy across desktop/headless hosts; callers supply pane status/liveness. */
+import type { AgentType } from './agent-status-types'
 import type { AutomationRun } from './automations-types'
 import type { TuiAgent } from './tui-agent'
-import { readAutomationAgentTurn, type AutomationAgentTurnStatus } from './automation-agent-turn'
-
-type AutomationReuseAgentStatus = AutomationAgentTurnStatus & Pick<AgentStatusPayload, 'agentType'>
 
 export type ReusableAutomationRun = AutomationRun & {
   terminalPaneKey: string
@@ -25,7 +19,7 @@ export function findReusableAutomationRun<Session>(args: {
   worktreeId: string
   currentRunId: string
   runs: readonly AutomationRun[]
-  agentStatusForPane: (paneKey: string) => AutomationReuseAgentStatus | undefined
+  agentStatusForPane: (paneKey: string) => { state: string; agentType?: AgentType } | undefined
   /** The run's session while its pane still holds the run's own PTY; null otherwise. */
   liveSession: (run: ReusableAutomationRun) => Session | null
 }): Session | null {
@@ -43,7 +37,7 @@ export function findReusableAutomationRun<Session>(args: {
       continue
     }
     const status = args.agentStatusForPane(run.terminalPaneKey)
-    if (!status || !isReusableAgentOf(status, args.agentId)) {
+    if (!status || !isIdleAgentOf(status, args.agentId)) {
       continue
     }
     const session = args.liveSession(run)
@@ -63,8 +57,11 @@ function isReusableRun(run: AutomationRun, worktreeId: string): run is ReusableA
   )
 }
 
-function isReusableAgentOf(status: AutomationReuseAgentStatus, agentId: TuiAgent): boolean {
-  if (!readAutomationAgentTurn(status).settled) {
+function isIdleAgentOf(
+  status: { state: string; agentType?: AgentType },
+  agentId: TuiAgent
+): boolean {
+  if (status.state !== 'done') {
     return false
   }
   return !status.agentType || status.agentType === 'unknown' || status.agentType === agentId

@@ -49,15 +49,8 @@ export class Session {
     this.processNameIsSpawnFile = opts.subprocess.processNameIsSpawnFile === true
     this.shellIsRootChild = opts.subprocess.shellIsRootChild === true
     this.onSessionExit = opts.onExit
-    const pipeline = createSessionOutputPipeline({
-      cols: opts.cols,
-      rows: opts.rows,
-      scrollback: opts.scrollback,
-      wslDistro: opts.wslDistro,
-      historySeedChunks: opts.historySeedChunks,
-      subprocess: this.subprocess,
-      isAlive: () => !this._disposed && this._state !== 'exited'
-    })
+    const isAlive = () => !this._disposed && this._state !== 'exited'
+    const pipeline = createSessionOutputPipeline(opts, isAlive)
     this.output = pipeline.output
     this.recoveryBarrier = pipeline.recoveryBarrier
     this.producerPause = new SessionProducerPause(this.subprocess)
@@ -86,13 +79,20 @@ export class Session {
       write: (data) => this.subprocess.write(data),
       onEmission: (emission) => this.recoveryBarrier.accept(emission)
     })
-    this.shellReady.startPromptReadinessProbe()
-    this.subprocess.onData((data) => {
-      if (!this._disposed) {
-        this.shellReady.ingestSubprocessData(data)
-      }
-    })
-    this.subprocess.onExit((code, cause) => this.handleSubprocessExit(code, cause))
+    try {
+      this.subprocess.onData((data) => {
+        if (!this._disposed) {
+          this.shellReady.ingestSubprocessData(data)
+        }
+      })
+      this.subprocess.onExit((code, cause) => this.handleSubprocessExit(code, cause))
+    } catch (error) {
+      this._disposed = true
+      this.shellReady.dispose()
+      this.recoveryBarrier.dispose()
+      this.output.disposeEmulator()
+      throw error
+    }
   }
 
   get state(): SessionState {
@@ -119,6 +119,10 @@ export class Session {
     return this.output.hasAttachedClients
   }
 
+  get physicalCompletion(): Promise<void> {
+    return this.termination.physicalCompletion
+  }
+
   get isTerminating(): boolean {
     return this.termination.isTerminating
   }
@@ -138,16 +142,17 @@ export class Session {
   }
 
   write(data: string): void {
-    if (this._state === 'exited' || this._disposed) {
-      return
+    // Human input must reach rc-file readers while automatic startup commands wait for readiness.
+    if (this.isAlive && !this._disposed && !this.startupIngress.answerLiveQueryReply(data)) {
+      this.subprocess.write(data)
     }
+  }
 
-    // Contain cooked query echoes and preserve input order through the post-ready flush window.
-    if (this.startupIngress.answerLiveQueryReply(data) || this.shellReady.tryEnqueue(data)) {
-      return
+  /** Orca's own startup command: held by the shell-ready barrier until the shell can read it. */
+  writeStartupCommand(data: string): void {
+    if (this._state !== 'exited' && !this._disposed && !this.shellReady.tryEnqueue(data)) {
+      this.subprocess.write(data)
     }
-
-    this.subprocess.write(data)
   }
 
   resize(cols: number, rows: number): void {
@@ -242,8 +247,10 @@ export class Session {
     return this.subprocess.getForegroundProcess(options)
   }
 
-  async confirmForegroundProcess(): Promise<string | null> {
-    return this.subprocess.confirmForegroundProcess?.() ?? this.subprocess.getForegroundProcess()
+  async confirmForegroundProcess(context?: { decision?: boolean }): Promise<string | null> {
+    return (
+      this.subprocess.confirmForegroundProcess?.(context) ?? this.subprocess.getForegroundProcess()
+    )
   }
 
   confirmShellForeground(): Promise<boolean> {
@@ -286,9 +293,7 @@ export class Session {
     const wasTerminating = this.termination.isTerminating && this._state !== 'exited'
     const clientsToNotify = wasTerminating ? this.output.snapshotClients() : []
     if (wasTerminating) {
-      try {
-        this.subprocess.forceKill()
-      } catch {}
+      this.termination.forceKillDuringDispose().catch(() => {})
       this._exitCode = -1
       this.termination.clearTerminating()
     }
@@ -342,7 +347,6 @@ export class Session {
     }
 
     this.shellReady.releaseDeviceAttributes()
-    this.shellReady.disposePromptReadinessProbe()
     this.shellReady.releaseHeldBytes()
     this.startupIngress.drainAndClose()
     // Flush after ingress drains so prompts held mid-proof reach clients and history before the exit event.

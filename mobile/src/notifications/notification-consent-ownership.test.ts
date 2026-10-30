@@ -42,6 +42,7 @@ vi.mock('react-native', () => ({
   Linking: { openSettings: vi.fn() },
   useWindowDimensions: () => ({ width: 390, height: 844 })
 }))
+vi.mock('expo-notifications', () => ({ scheduleNotificationAsync: vi.fn() }))
 vi.mock('expo-router', () => ({
   useFocusEffect: vi.fn(),
   useLocalSearchParams: () => ({ hostId: 'host', steps: 'notifications' }),
@@ -118,7 +119,6 @@ async function connectedHost() {
   client.sendRequest.mockClear()
   return client
 }
-// The onboarding pager renders once its viewport reports a width.
 function layoutOnboarding() {
   renderer!.root
     .findAll((node) => node.props.onLayout !== undefined)[0]

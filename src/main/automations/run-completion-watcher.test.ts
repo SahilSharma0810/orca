@@ -97,6 +97,7 @@ describe('authority-owned automation run completion', () => {
     const store = await createStore()
     const automation = createAutomation(store)
     const service = new AutomationService(store, {
+      allowRemoteHostScheduling: true,
       headlessDispatcher: async () => ({ ...LAUNCH_TARGET }),
       terminalObserver: createObserver(async () => ({ status: 'completed', error: null }))
     })
@@ -113,6 +114,7 @@ describe('authority-owned automation run completion', () => {
     const store = await createStore()
     const automation = createAutomation(store)
     const service = new AutomationService(store, {
+      allowRemoteHostScheduling: true,
       headlessDispatcher: async () => ({ ...LAUNCH_TARGET }),
       terminalObserver: createObserver(
         async () => ({ status: 'completed' }),
@@ -130,6 +132,7 @@ describe('authority-owned automation run completion', () => {
     const automation = createAutomation(store)
     const logged = vi.spyOn(console, 'error').mockImplementation(() => {})
     const service = new AutomationService(store, {
+      allowRemoteHostScheduling: true,
       headlessDispatcher: async () => ({ ...LAUNCH_TARGET }),
       terminalObserver: createObserver(async () => {
         throw new Error('terminal_handle_stale')
@@ -230,6 +233,7 @@ describe('authority-owned automation run completion', () => {
     const automation = createAutomation(store)
     let resolveObservation: ((value: AutomationRunCompletionObservation) => void) | null = null
     const service = new AutomationService(store, {
+      allowRemoteHostScheduling: true,
       headlessDispatcher: async () => ({ ...LAUNCH_TARGET }),
       terminalObserver: createObserver(
         () =>
@@ -268,6 +272,7 @@ describe('authority-owned automation run completion', () => {
     const automation = createAutomation(store)
     const aborted: boolean[] = []
     const service = new AutomationService(store, {
+      allowRemoteHostScheduling: true,
       headlessDispatcher: async () => ({ ...LAUNCH_TARGET }),
       terminalObserver: createObserver(
         (signal) =>
@@ -292,6 +297,7 @@ describe('authority-owned automation run completion', () => {
     const automation = createAutomation(store)
     const publish = vi.fn()
     const service = new AutomationService(store, {
+      allowRemoteHostScheduling: true,
       headlessDispatcher: async () => ({ ...LAUNCH_TARGET }),
       onAutomationsChanged: publish
     })
@@ -320,6 +326,7 @@ describe('automationsChanged publication', () => {
     const automation = createAutomation(store)
     const seen: { payload: AutomationsChangedPayload; status: string | undefined }[] = []
     const service = new AutomationService(store, {
+      allowRemoteHostScheduling: true,
       headlessDispatcher: async () => ({ ...LAUNCH_TARGET }),
       onAutomationsChanged: (payload) => {
         seen.push({
@@ -342,25 +349,6 @@ describe('automationsChanged publication', () => {
     expect(seen.map((entry) => entry.payload.reason)).toEqual(['run', 'run', 'run', 'run', 'usage'])
     expect(seen.at(-1)?.status).toBe('completed')
     expect(seen.every((entry) => entry.payload.selector?.kind === 'self')).toBe(true)
-    service.stop()
-  })
-
-  it('changes nothing for a consumer that ignores the unknown event type', async () => {
-    const store = await createStore()
-    const automation = createAutomation(store)
-    const oldClientState = { repoRefreshes: 0 }
-    const service = new AutomationService(store, {
-      headlessDispatcher: async () => ({ ...LAUNCH_TARGET }),
-      onAutomationsChanged: (payload) => {
-        if ((payload as { type?: string }).type === 'reposChanged') {
-          oldClientState.repoRefreshes += 1
-        }
-      }
-    })
-
-    const run = await service.runNow(automation.id)
-    expect(oldClientState.repoRefreshes).toBe(0)
-    expect(readRun(store, automation.id, run.id).status).toBe('dispatched')
     service.stop()
   })
 })

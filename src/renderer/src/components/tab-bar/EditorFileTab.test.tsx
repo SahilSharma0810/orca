@@ -50,6 +50,8 @@ vi.mock('react', async () => {
   }
 })
 
+vi.mock('@/store/plugin-custom-editors', () => ({ useTabCustomEditor: () => null }))
+
 vi.mock('./use-tab-strip-slot-props', () => ({
   useTabStripSlotProps: () => ({ className: '', 'data-tab-strip-slot': '' })
 }))
@@ -411,9 +413,7 @@ describe('EditorFileTab rename menu', () => {
     const firstRender = expandNode((await renderEditorFileTab(file, onActivate)).element)
     const renameItem = findMenuItemByText(firstRender, 'Rename')
 
-    // Why: New Markdown tabs are real on-disk files even while marked
-    // isUntitled; the tab menu must let users rename the screenshot-style
-    // "untitled-N.md" files directly.
+    // Untitled Markdown tabs already exist on disk and must remain renameable.
     expect(renameItem.props.disabled).toBe(false)
     selectRenameFromMenu(firstRender)
 
