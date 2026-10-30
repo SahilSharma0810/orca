@@ -58,6 +58,7 @@ function automation(overrides: Record<string, unknown>) {
 const RUN = {
   id: 'run-1',
   title: 'Nightly',
+  createdAt: Date.UTC(2026, 9, 9, 3),
   scheduledFor: Date.UTC(2026, 9, 9, 3),
   trigger: 'scheduled' as const
 }

@@ -4,8 +4,7 @@ import {
   setSshConnectionManagerResolver
 } from '../ssh/targets/ssh-target-registry'
 import { SshConnectionStore } from '../ssh/connection/ssh-connection-store'
-import type { SshConnectionManager } from '../ssh/connection/ssh-connection-manager'
-import { getAutomationRunStatusLabel } from '../../renderer/src/components/automations/automation-page-parts'
+import { SshConnectionManager } from '../ssh/connection/ssh-connection-manager'
 import {
   recordSshCredentialDeclined,
   resetSshCredentialDeclinesForTests
@@ -314,13 +313,9 @@ describe('AutomationService prechecks', () => {
         lastRequiredPassphrase: mode === 'passphrase' || mode === 'cached'
       })
       setSshTargetRegistryStore(new SshConnectionStore(store))
-      // SAFETY: this registry predicate reads only the credential-cache query.
-      setSshConnectionManagerResolver(
-        () =>
-          ({
-            hasCachedCredential: () => mode === 'cached'
-          }) as SshConnectionManager
-      )
+      const manager = new SshConnectionManager({ onStateChange: vi.fn() })
+      vi.spyOn(manager, 'hasCachedCredential').mockReturnValue(mode === 'cached')
+      setSshConnectionManagerResolver(() => manager)
       vi.setSystemTime(new Date('2026-05-13T08:00:00Z'))
       store.addRepo(makeRepo({ connectionId: 'ssh-test' }))
       const automation = store.createAutomation({
@@ -394,9 +389,6 @@ describe('AutomationService prechecks', () => {
         await vi.waitFor(() =>
           expect(store.listAutomationRuns(automation.id)[0]?.status).toBe(expected)
         )
-        expect(
-          getAutomationRunStatusLabel(store.listAutomationRuns(automation.id)[0]!.status)
-        ).toBe(credentialNeeded ? 'Needs credentials' : delivered ? 'Launched' : 'Unavailable')
         expect(rendererSend).not.toHaveBeenCalled()
         if (delivered) {
           expect(order).toEqual(['connect', 'precheck', 'send'])

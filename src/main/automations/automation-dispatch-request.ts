@@ -1,5 +1,5 @@
 import { failedPrecheckResult, runAutomationPrecheck } from './precheck-runner'
-import { getRepoSshConnectionId } from '../../shared/execution-host'
+import { getRepoExecutionHostId, getRepoSshConnectionId } from '../../shared/execution-host'
 import {
   connectRegisteredSshTarget,
   getRegisteredSshState,
@@ -12,7 +12,6 @@ import type {
   AutomationRun,
   AutomationPrecheckResult
 } from '../../shared/automations-types'
-import { getRepoExecutionHostId } from '../../shared/execution-host'
 import type { Store } from '../persistence'
 import type { AutomationRunWriter } from './automation-run-writer'
 import type { HeadlessAutomationDispatcher } from './headless-dispatch'

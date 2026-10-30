@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import type { Automation, AutomationRun } from '../../../../shared/automations-types'
 import type { AutomationListRow } from './automation-list-row-identity'
+import { getAutomationRunStatusLabel } from './automation-page-parts'
 import {
   buildAutomationRunsDashboardEntries,
   countAutomationRunOutcomes,
@@ -37,6 +38,11 @@ function run(
 }
 
 describe('automation runs dashboard model', () => {
+  it('labels delivered and skipped SSH outcomes without claiming a result', () => {
+    expect(getAutomationRunStatusLabel('dispatched')).toBe('Launched')
+    expect(getAutomationRunStatusLabel('skipped_needs_interactive_auth')).toBe('Needs credentials')
+    expect(getAutomationRunStatusLabel('skipped_unavailable')).toBe('Unavailable')
+  })
   const local = row('local-row', 'Local Mac', {
     authority: { kind: 'desktop' },
     selector: { kind: 'self' }

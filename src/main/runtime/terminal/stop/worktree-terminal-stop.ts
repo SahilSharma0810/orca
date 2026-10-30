@@ -1,4 +1,4 @@
-import type { WorktreeTerminalSleepOptions } from './worktree-terminal-stop-options'
+import type * as Stop from './worktree-terminal-stop-options'
 import { OrcaRuntimeWithResolveTerminalSplitSourceAuthority } from '../launch/terminal-split-source-authority'
 import type { ResolvedWorktree } from '../../runtime-worktree-path-identity'
 import { worktreeIdentityKey } from '../../../../shared/worktree/id'
@@ -8,7 +8,6 @@ import type {
   RuntimeWorktreeTerminalCloseResult,
   RuntimeWorktreeTerminalSleepResult
 } from '../../../../shared/runtime-types'
-import type { WorktreeTerminalStopOptions } from './worktree-terminal-stop-options'
 import type { HostWorktreeTarget } from '../../../../shared/worktree/host-qualified-identity'
 import type { WorktreeTerminalMutationKind } from '../../worktree-terminal-mutation-lock'
 import type { WorkspaceSessionState } from '../../../../shared/workspace-session-state-types'
@@ -34,7 +33,7 @@ export abstract class OrcaRuntimeWithStopTerminalsForWorktree extends OrcaRuntim
   protected abstract sleepResolvedWorktreeTerminals(
     worktree: ResolvedWorktree,
     scope: WorktreeSleepScope,
-    options?: WorktreeTerminalSleepOptions
+    options?: Stop.WorktreeTerminalSleepOptions
   ): Promise<RuntimeWorktreeTerminalSleepResult>
 
   private getWorktreeHostFence(
@@ -170,7 +169,7 @@ export abstract class OrcaRuntimeWithStopTerminalsForWorktree extends OrcaRuntim
 
   async stopTerminalsForWorktree(
     worktreeSelector: string,
-    options: WorktreeTerminalStopOptions = {}
+    options: Stop.WorktreeTerminalStopOptions = {}
   ): Promise<{ stopped: number }> {
     // Why: this mutates live PTYs, so reject while the graph is reloading rather than act on cached leaf ownership.
     const graphEpoch = this.captureReadyGraphEpoch()
@@ -254,7 +253,7 @@ export abstract class OrcaRuntimeWithStopTerminalsForWorktree extends OrcaRuntim
   /** With `soleLivePtyId`, stops nothing unless that PTY is the worktree's only live terminal. */
   async sleepTerminalsForWorktree(
     worktreeSelector: string,
-    options: WorktreeTerminalSleepOptions = {}
+    options: Stop.WorktreeTerminalSleepOptions = {}
   ): Promise<RuntimeWorktreeTerminalSleepResult> {
     const worktree = await this.resolveWorkspaceSelector(worktreeSelector)
     const scope = resolveSleepScope(this.store?.getRepos() ?? [], worktree)

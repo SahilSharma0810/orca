@@ -214,9 +214,7 @@ export class AutomationRunCompletionWatcher {
             return
           }
           entry.result = result
-          if (entry.adopted) {
-            return this.finish(entry)
-          }
+          return entry.adopted ? this.finish(entry) : undefined
         },
         (error) => {
           if (!this.current(entry) || controller.signal.aborted) {
@@ -226,9 +224,7 @@ export class AutomationRunCompletionWatcher {
             entry.submission || (entry.recovery && entry.run.sessionKind !== 'chat')
               ? null
               : { status: 'dispatch_failed', error: describeObservationError(error) }
-          if (entry.adopted) {
-            return this.finish(entry)
-          }
+          return entry.adopted ? this.finish(entry) : undefined
         }
       )
       .catch((error) => console.error('[automations] failed to persist watched completion:', error))

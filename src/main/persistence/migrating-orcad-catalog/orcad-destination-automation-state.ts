@@ -1,5 +1,7 @@
-import { isAutomationRunHistory } from '../../../shared/automation-run-retention'
-import { MAX_AUTOMATION_RUNS_PER_AUTOMATION } from '../../../shared/automation-run-retention'
+import {
+  isAutomationRunHistory,
+  MAX_AUTOMATION_RUNS_PER_AUTOMATION
+} from '../../../shared/automation-run-retention'
 import type { Automation, AutomationRun } from '../../../shared/automations-types'
 import type { PersistedState } from '../../../shared/persisted-state-types'
 import { selectNewRows } from './orcad-catalog-row-identity'

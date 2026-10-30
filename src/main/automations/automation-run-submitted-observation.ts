@@ -117,7 +117,7 @@ export async function observeSubmittedRun(
   const sourceSignal = AbortSignal.any([signal, sourceAbort.signal])
   let settled = false
   let cursor: { identity: string; offset: number } | null = null
-  let baseline: typeof cursor = null
+  let baseline: { identity: string; offset: number } | null = null
   let identity: string | null = null
   let targetRoot: string | null = null
   let candidateId: string | null = null

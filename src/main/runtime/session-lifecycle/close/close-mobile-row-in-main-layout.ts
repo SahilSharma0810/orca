@@ -11,8 +11,15 @@ import {
 } from '../../session-tabs/main-layout-close-command'
 import type { ExplicitCloseStop } from '../../session-tabs/explicit-terminal-close-pty-stops'
 import { retireTerminalSurfacesFromSnapshot } from '../../mobile-session-terminal-retirement'
+import type { WindowLayoutCommand } from '../../runtime-layout-apply'
+import type { LayoutApplyReply } from '../../../../shared/workspace-layout/workspace-layout-command-types'
 
 export abstract class OrcaRuntimeWithCloseMobileRowInMainLayout extends OrcaRuntimeWithRefuseUnattributedMobileSessionTabClose {
+  abstract applyLayoutCommand(
+    command: WindowLayoutCommand,
+    beforeAction?: () => void
+  ): Promise<LayoutApplyReply>
+
   protected abstract stopExplicitlyClosedTabPtys(
     ptyIds: readonly string[],
     addressedPtyId: string
