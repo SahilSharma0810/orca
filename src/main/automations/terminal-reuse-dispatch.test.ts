@@ -422,3 +422,150 @@ it.each([
   },
   120_000
 )
+
+it.each(['zero', 'partial', 'unknown', 'accepted', 'abort'] as const)(
+  'settles the real reuse operation and dispatch without duplicating %s effects',
+  async (effect) => {
+    testState.dir = mkdtempSync(join(tmpdir(), 'orca-reuse-effects-'))
+    directories.push(testState.dir)
+    const store = await createStore()
+    store.addRepo({ id: 'r1', path: '/repo', displayName: 'Repo', badgeColor: '#fff', addedAt: 1 })
+    const automation = store.createAutomation({
+      name: 'Audit',
+      prompt: 'check once',
+      agentId: 'claude',
+      projectId: 'r1',
+      workspaceMode: 'existing',
+      workspaceId: 'r1::/tmp/worktree-a',
+      reuseSession: true,
+      timezone: 'UTC',
+      rrule: 'FREQ=DAILY;BYHOUR=9;BYMINUTE=0',
+      dtstart: Date.now()
+    })
+    let shellReturn: (() => void) | undefined
+    let foreground: 'agent' | 'shell' = effect === 'zero' ? 'shell' : 'agent'
+    const controller = new AbortController()
+    const rig = await createAgentPromptSubmissionRuntime(
+      (_runtime, data) => {
+        if (data.includes('check once') && effect === 'partial') {
+          foreground = 'shell'
+          shellReturn?.()
+        }
+        if (data === '\r' && effect === 'accepted') {
+          controller.abort()
+        }
+      },
+      'claude',
+      () => {
+        if (effect === 'unknown') {
+          throw new Error('lost write acknowledgement')
+        }
+        return true
+      }
+    )
+    vi.spyOn(rig.runtime, 'readLaunchedAgentForeground').mockImplementation(async () => foreground)
+    vi.spyOn(rig.runtime, 'subscribeToTerminalData').mockImplementation((_pty, callback) => {
+      shellReturn = () => callback('\x1b]133;A\x07')
+      return () => {
+        shellReturn = undefined
+      }
+    })
+    const pane = rig.runtime.getTerminalPaneKey(rig.handle)!
+    const previous = store.createAutomationRun(automation, 1, 'manual')
+    store.updateAutomationRun({
+      runId: previous.id,
+      status: 'completed',
+      workspaceId: automation.workspaceId,
+      terminalPaneKey: pane,
+      terminalPtyId: 'pty-prompt',
+      sessionKind: 'terminal'
+    })
+    const records = await openTestAgentSessionRecordStore(join(testState.dir, 'ledger'))
+    setAgentLaunchRecordStore(records)
+    const external = runtimeStub({
+      terminalPaneKey: 'fresh-tab:fresh-leaf',
+      lineCarriesPrompt: true
+    })
+    external.requireStore.mockReturnValue(store)
+    external.showTerminal.mockResolvedValue({
+      handle: rig.handle,
+      worktreeId: automation.workspaceId!
+    })
+    external.hasLiveTerminalForPaneKey.mockReturnValue(true)
+    external.getTerminalHandleForPaneKey.mockImplementation((key) =>
+      key === pane ? rig.handle : null
+    )
+    external.isTerminalRunningAgent.mockImplementation(async () => {
+      if (effect === 'abort') {
+        controller.abort()
+      }
+      return true
+    })
+    const binding = rig.runtime.getTerminalPromptRequestBinding(rig.handle)
+    // SAFETY: only external creation/workspace facts are stubbed; reuse writes and registry settlement are production owners.
+    const runtime = Object.assign(external, {
+      getTerminalPaneKey: (handle: string) =>
+        handle === rig.handle ? pane : 'fresh-tab:fresh-leaf',
+      getTerminalPtyIdForHandle: (handle: string) =>
+        handle === rig.handle ? 'pty-prompt' : 'pty-fresh',
+      getTerminalPromptRequestBinding: () => binding,
+      getAgentStatusRowsForPane: () => [{ agentType: 'claude', state: 'working', receivedAt: 1 }],
+      readLaunchedAgentForeground: rig.runtime.readLaunchedAgentForeground.bind(rig.runtime),
+      subscribeToTerminalData: rig.runtime.subscribeToTerminalData.bind(rig.runtime),
+      sendTerminalAgentPrompt: rig.runtime.sendTerminalAgentPrompt.bind(rig.runtime)
+    }) as unknown as OrcaRuntimeService
+    const service = new AutomationService(store, {
+      allowRemoteHostScheduling: true,
+      headlessDispatcher: async (request) => {
+        const { terminalHandle: _handle, ...launch } = await launchHeadlessAutomationAgent(
+          runtime,
+          {
+            ...request,
+            runs: store.listAutomationRuns(automation.id),
+            observation: {
+              signal: controller.signal,
+              assertCurrent: () => {
+                if (controller.signal.aborted) {
+                  throw new Error('request_aborted')
+                }
+              },
+              bind: () => {},
+              submitted: () => {},
+              deliverySettled: () => {},
+              release: () => {}
+            }
+          }
+        )
+        return launch
+      }
+    })
+    try {
+      const run = await service.runNow(automation.id)
+      expect(external.createTerminal).toHaveBeenCalledTimes(effect === 'zero' ? 1 : 0)
+      expect(rig.writes.filter((data) => data.includes('check once'))).toHaveLength(
+        effect === 'zero' || effect === 'abort' ? 0 : 1
+      )
+      expect(run.status).toBe(
+        effect === 'zero' || effect === 'accepted' ? 'dispatched' : 'dispatch_failed'
+      )
+      const receipt = readAutomationRunReceipt(records, run)
+      if (effect === 'abort') {
+        expect(receipt?.accepted ?? false).toBe(false)
+      } else {
+        expect(receipt).toMatchObject({
+          kind: 'terminal',
+          accepted: effect === 'zero' || effect === 'accepted'
+        })
+      }
+      if (effect === 'zero') {
+        expect(run.terminalPtyId).toBe('pty-fresh')
+        expect(external.createTerminal.mock.calls[0]?.[1]).toMatchObject({
+          startupPrompt: 'check once'
+        })
+      }
+    } finally {
+      service.stop()
+      controller.abort()
+    }
+  }
+)

@@ -1,4 +1,11 @@
-import { setSshTargetRegistryHandlers } from '../ssh/targets/ssh-target-registry'
+import {
+  setSshTargetRegistryHandlers,
+  setSshTargetRegistryStore,
+  setSshConnectionManagerResolver
+} from '../ssh/targets/ssh-target-registry'
+import { SshConnectionStore } from '../ssh/connection/ssh-connection-store'
+import type { SshConnectionManager } from '../ssh/connection/ssh-connection-manager'
+import { getAutomationRunStatusLabel } from '../../renderer/src/components/automations/automation-page-parts'
 import {
   recordSshCredentialDeclined,
   resetSshCredentialDeclinesForTests
@@ -87,6 +94,8 @@ describe('AutomationService prechecks', () => {
         reconnectAttempt: 0
       })
     })
+    setSshTargetRegistryStore(null)
+    setSshConnectionManagerResolver(() => null)
     resetSshCredentialDeclinesForTests()
     hasCreatedStoreInCase = false
     resetRetirementCollisionKeyCacheForTests()
@@ -97,6 +106,8 @@ describe('AutomationService prechecks', () => {
 
   afterEach(async () => {
     setSshTargetRegistryHandlers({ connect: null, getState: null })
+    setSshTargetRegistryStore(null)
+    setSshConnectionManagerResolver(() => null)
     resetSshCredentialDeclinesForTests()
     await closeTestStores()
     vi.useRealTimers()
@@ -288,7 +299,7 @@ describe('AutomationService prechecks', () => {
     expect(dispatched).toEqual(['scheduled', 'manual'])
     service.stop()
   })
-  it.each(['connect', 'declined', 'replaced'] as const)(
+  it.each(['connect', 'declined', 'passphrase', 'cached', 'unavailable', 'replaced'] as const)(
     'runs SSH no-prompt preflight before precheck: %s',
     async (mode) => {
       vi.setSystemTime(new Date('2026-05-13T08:00:00Z'))
@@ -299,8 +310,17 @@ describe('AutomationService prechecks', () => {
         host: 'host',
         port: 22,
         username: 'test',
-        generation: 1
+        generation: 1,
+        lastRequiredPassphrase: mode === 'passphrase' || mode === 'cached'
       })
+      setSshTargetRegistryStore(new SshConnectionStore(store))
+      // SAFETY: this registry predicate reads only the credential-cache query.
+      setSshConnectionManagerResolver(
+        () =>
+          ({
+            hasCachedCredential: () => mode === 'cached'
+          }) as SshConnectionManager
+      )
       vi.setSystemTime(new Date('2026-05-13T08:00:00Z'))
       store.addRepo(makeRepo({ connectionId: 'ssh-test' }))
       const automation = store.createAutomation({
@@ -308,7 +328,9 @@ describe('AutomationService prechecks', () => {
         prompt: 'Check',
         agentId: 'claude',
         projectId: 'r1',
-        workspaceMode: 'new_per_run',
+        workspaceMode: 'existing',
+        workspaceId: 'r1::/repo',
+        reuseSession: true,
         timezone: 'UTC',
         rrule: 'FREQ=DAILY;BYHOUR=9;BYMINUTE=0',
         dtstart: Date.parse('2026-05-13T00:00:00Z'),
@@ -319,6 +341,9 @@ describe('AutomationService prechecks', () => {
       const connect = vi.fn(async (_id: string, options?: { automatic?: boolean }) => {
         expect(options).toEqual({ automatic: true, interactive: false })
         order.push('connect')
+        if (mode === 'unavailable') {
+          throw new Error('connection lost')
+        }
         connected = true
         if (mode === 'replaced') {
           store.updateAutomation(automation.id, { prompt: 'Changed' })
@@ -354,21 +379,32 @@ describe('AutomationService prechecks', () => {
         allowRemoteHostScheduling: true,
         headlessDispatcher: send
       })
+      const rendererSend = vi.fn()
+      service.setWebContents({ isDestroyed: () => false, send: rendererSend } as never)
       vi.setSystemTime(automation.nextRunAt)
       service.setRendererReady()
       try {
+        const credentialNeeded = mode === 'declined' || mode === 'passphrase'
+        const delivered = mode === 'connect' || mode === 'cached'
+        const expected = credentialNeeded
+          ? 'skipped_needs_interactive_auth'
+          : delivered
+            ? 'dispatched'
+            : 'skipped_unavailable'
         await vi.waitFor(() =>
-          expect(store.listAutomationRuns(automation.id)[0]?.status).toMatch(
-            /^(dispatched|skipped_unavailable)$/
-          )
+          expect(store.listAutomationRuns(automation.id)[0]?.status).toBe(expected)
         )
-        if (mode === 'connect') {
+        expect(
+          getAutomationRunStatusLabel(store.listAutomationRuns(automation.id)[0]!.status)
+        ).toBe(credentialNeeded ? 'Needs credentials' : delivered ? 'Launched' : 'Unavailable')
+        expect(rendererSend).not.toHaveBeenCalled()
+        if (delivered) {
           expect(order).toEqual(['connect', 'precheck', 'send'])
         } else {
           expect(runAutomationPrecheckMock).not.toHaveBeenCalled()
           expect(send).not.toHaveBeenCalled()
         }
-        if (mode === 'declined') {
+        if (credentialNeeded) {
           expect(connect).not.toHaveBeenCalled()
         }
       } finally {

@@ -1,4 +1,5 @@
 import type { AutomationRun } from '../../../../shared/automations-types'
+import { isAutomationRunHistory } from '../../../../shared/automation-run-retention'
 import { parseExecutionHostId } from '../../../../shared/execution-host'
 import type { AutomationActionNotice } from './automation-row-action-dispatch'
 import type { AutomationListRow } from './automation-list-row-identity'
@@ -101,11 +102,7 @@ function matchesStatus(
   if (filter === 'skipped') {
     return status.startsWith('skipped')
   }
-  return (
-    status === 'pending' ||
-    status === 'dispatching' ||
-    (status === 'dispatched' && run.sessionKind === 'chat')
-  )
+  return !isAutomationRunHistory(run)
 }
 
 export function filterAutomationRunsDashboardEntries({

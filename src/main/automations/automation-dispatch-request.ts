@@ -109,10 +109,13 @@ export async function requestAutomationDispatch(
     }
     return target
   }
-  const refuse = (failure: AutomationRunFailure) =>
+  const refuse = (
+    failure: AutomationRunFailure,
+    status: 'skipped_unavailable' | 'skipped_needs_interactive_auth' = 'skipped_unavailable'
+  ) =>
     ctx.runs.updateRun({
       runId: run.id,
-      status: 'skipped_unavailable',
+      status,
       workspaceId: automation.workspaceId,
       ...failure
     })
@@ -178,10 +181,13 @@ export async function requestAutomationDispatch(
   const connectionId = getRepoSshConnectionId(target.repo)
   if (connectionId && getRegisteredSshState(connectionId)?.status !== 'connected') {
     if (registeredSshTargetNeedsCredentialPrompt(connectionId)) {
-      return refuse({
-        error:
-          'The SSH host needs sign-in before this automation can run. Connect it and try again.'
-      })
+      return refuse(
+        {
+          error:
+            'The SSH host needs sign-in before this automation can run. Connect it and try again.'
+        },
+        'skipped_needs_interactive_auth'
+      )
     }
     try {
       const connected = await connectRegisteredSshTarget(connectionId, {

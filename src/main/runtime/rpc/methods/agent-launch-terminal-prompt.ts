@@ -2,6 +2,7 @@
  * Reuse worker readiness and sendTerminalAgentPrompt for serialized, generation-fenced bracketed paste and per-agent Enter timing across local, WSL and SSH. */
 
 import { randomUUID } from 'node:crypto'
+import { AgentLaunchSurfaceUnavailableError } from '../../../agent-launch/agent-launch-surface-refusal'
 import type { AgentPromptExpectedBinding } from '../../runtime-terminal-contracts'
 import type { TuiAgent } from '../../../../shared/tui-agent'
 import type { RuntimeTerminalWait } from '../../../../shared/runtime-terminal-contracts'
@@ -103,6 +104,7 @@ export async function deliverTerminalAgentLaunchPrompt(args: {
   })
   // Once Enter left, a later throw (an abort during verification) cannot unsend the text.
   let submitted = false
+  let writeReserved = false
   try {
     args.assertCurrent?.()
     const expectedBinding =
@@ -135,6 +137,9 @@ export async function deliverTerminalAgentLaunchPrompt(args: {
         await guard.beforeWrite(ptyId)
         args.assertCurrent?.()
       },
+      reserveWrite: () => {
+        writeReserved = true
+      },
       // Both fields enable queued acceptance; without requestId a slow first turn throws despite written input.
       acceptQueued: true,
       ...(args.allowBusy && !args.freshLaunch ? { onPermission: 'wait' as const } : {}),
@@ -151,6 +156,15 @@ export async function deliverTerminalAgentLaunchPrompt(args: {
   } catch (error) {
     if (isAgentPromptStalledError(error) || submitted) {
       return true
+    }
+    if (
+      args.allowBusy &&
+      !args.freshLaunch &&
+      !writeReserved &&
+      error instanceof Error &&
+      error.message === 'agent_not_in_foreground'
+    ) {
+      throw new AgentLaunchSurfaceUnavailableError('The terminal agent exited before delivery.')
     }
     console.warn(
       '[agent-launch] the terminal agent started, its launch prompt was not delivered',

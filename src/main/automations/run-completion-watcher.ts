@@ -21,6 +21,7 @@ import {
 } from '../../shared/automations-types'
 import type { TuiAgent } from '../../shared/tui-agent'
 import { RetainedRunReconciler } from './retained-run-reconciliation'
+import { isAutomationRunHistory } from '../../shared/automation-run-retention'
 
 export class AutomationRunCompletionWatcher {
   private readonly observer: AutomationRunTerminalObserver
@@ -45,7 +46,7 @@ export class AutomationRunCompletionWatcher {
         return Boolean(current && !isFinalAutomationRunStatus(current.status))
       },
       strand: (run) => {
-        if (run.status === 'dispatched' && run.sessionKind !== 'chat') {
+        if (isAutomationRunHistory(run)) {
           return
         }
         void this.finalize(run, {
@@ -185,7 +186,7 @@ export class AutomationRunCompletionWatcher {
     }
     const handle = this.observer.resolveRunTerminal(run)
     if (!handle) {
-      return run.status === 'dispatched' && run.sessionKind !== 'chat'
+      return isAutomationRunHistory(run)
     }
     this.watch(run, true)
     return true
