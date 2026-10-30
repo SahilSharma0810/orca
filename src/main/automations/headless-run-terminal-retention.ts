@@ -13,7 +13,7 @@ export type HeadlessRunTerminalRetentionDeps = {
   /** True only while the pane holds this run's PTY. */
   terminalIncarnation: (run: AutomationRun) => string | null
   runTerminalAlive: (run: AutomationRun) => boolean
-  /** Require fresh proof that only an idle shell remains in the PTY. */
+  /** Current foreground/background observations veto retirement; they do not prove input consumption. */
   wholePaneClear: (run: AutomationRun, allowEmpty?: boolean) => boolean
   shellAloneAtPrompt: (run: AutomationRun) => Promise<boolean>
   /** Close only this run's pane and PTY; preserve user-created splits. */
@@ -112,8 +112,7 @@ export function createHeadlessRunTerminalRetention(deps: HeadlessRunTerminalRete
             !deps.runTerminalAlive(latest) ||
             deps.terminalIncarnation(latest) !== incarnation ||
             !(
-              ((latest.status === 'completed' || latest.status === 'dispatched') &&
-                deps.wholePaneClear(latest)) ||
+              (latest.status === 'completed' && deps.wholePaneClear(latest)) ||
               (shell && deps.wholePaneClear(latest, true))
             )
           ) {

@@ -45,8 +45,7 @@ function harness(runs: AutomationRun[]) {
       runKeyedSerializedOperation(lanes, automationId, operation),
     listRuns: () => runs.filter((run) => !forgotten.some((gone) => gone.id === run.id)),
     terminalClientUse: (run) => use.get(run.id) ?? 'unused',
-    wholePaneClear: (run) =>
-      !held.has(run.id) && (run.status === 'completed' || idleShell.has(run.id)),
+    wholePaneClear: (run) => !held.has(run.id),
     terminalIncarnation: (run) => incarnations.get(run.id) ?? 'original',
     runTerminalAlive: (run) => !dead.has(run.id) && !closed.includes(run.terminalPaneKey ?? ''),
     shellAloneAtPrompt: async (run) => idleShell.has(run.id),
