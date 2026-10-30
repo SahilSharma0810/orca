@@ -10,7 +10,7 @@ import {
   setAgentLaunchRecordStore
 } from '../runtime/rpc/methods/agent-launch.test-fixture'
 import { openTestAgentSessionRecordStore } from '../runtime/agent-session-record-store-test-harness'
-import type { OrcaRuntimeService } from '../runtime/orca-runtime'
+import { OrcaRuntimeService } from '../runtime/orca-runtime'
 import * as transcripts from '../native-chat/transcript-watch'
 import { createRuntimeAutomationRunTerminalObserver } from './runtime-terminal-run-observer'
 import { launchHeadlessAutomationAgent } from './headless-automation-agent-launch'
@@ -129,8 +129,7 @@ it('retains repeated delivered input through old-turn Done until the live CLI co
     repo: null,
     folderWorkspace: null
   })
-  // SAFETY: external workspace/PTY effects are controlled; dispatch, registry, writer, client-use and retention owners are real.
-  const runtime = Object.assign(external, {
+  const runtime = Object.assign(new OrcaRuntimeService(store), external, {
     getTerminalPromptRequestBinding: rig.runtime.getTerminalPromptRequestBinding.bind(rig.runtime),
     getTerminalPaneKey: () => pane,
     getTerminalPtyIdForHandle: (handle: string) =>
@@ -159,7 +158,7 @@ it('retains repeated delivered input through old-turn Done until the live CLI co
     sendTerminalAgentPrompt: rig.runtime.sendTerminalAgentPrompt.bind(rig.runtime),
     waitForTerminal: async () => ({ satisfied: true }),
     showManagedWorktree: async () => ({ displayName: 'Audit' })
-  }) as unknown as OrcaRuntimeService
+  })
   const service = new AutomationService(store, {
     allowRemoteHostScheduling: true,
     headlessDispatcher: async (request) => {
@@ -476,8 +475,7 @@ it.each([
         claudeRunningNonAgentTask: monitor?.claudeRunningNonAgentTask
       })
     }
-    // SAFETY: external factories supply workspace/process facts; production dispatch, operation ledger, writer and source join remain real.
-    const runtime = Object.assign(external, {
+    const runtime = Object.assign(new OrcaRuntimeService(store), external, {
       getTerminalPromptRequestBinding: rig.runtime.getTerminalPromptRequestBinding.bind(
         rig.runtime
       ),
@@ -494,7 +492,7 @@ it.each([
       sendTerminalAgentPrompt: rig.runtime.sendTerminalAgentPrompt.bind(rig.runtime),
       waitForTerminal: async () => ({ satisfied: true }),
       showManagedWorktree: async () => ({ displayName: 'Audit' })
-    }) as unknown as OrcaRuntimeService
+    })
     const observer = createRuntimeAutomationRunTerminalObserver(runtime)
     let service: AutomationService
     service = new AutomationService(store, {
@@ -736,8 +734,7 @@ it.each(['zero', 'partial', 'unknown', 'accepted', 'abort'] as const)(
       return true
     })
     const binding = rig.runtime.getTerminalPromptRequestBinding(rig.handle)
-    // SAFETY: only external creation/workspace facts are stubbed; reuse writes and registry settlement are production owners.
-    const runtime = Object.assign(external, {
+    const runtime = Object.assign(new OrcaRuntimeService(store), external, {
       getTerminalPaneKey: (handle: string) =>
         handle === rig.handle ? pane : 'fresh-tab:fresh-leaf',
       getTerminalPtyIdForHandle: (handle: string) =>
@@ -747,7 +744,7 @@ it.each(['zero', 'partial', 'unknown', 'accepted', 'abort'] as const)(
       readLaunchedAgentForeground: rig.runtime.readLaunchedAgentForeground.bind(rig.runtime),
       subscribeToTerminalData: rig.runtime.subscribeToTerminalData.bind(rig.runtime),
       sendTerminalAgentPrompt: rig.runtime.sendTerminalAgentPrompt.bind(rig.runtime)
-    }) as unknown as OrcaRuntimeService
+    })
     const service = new AutomationService(store, {
       allowRemoteHostScheduling: true,
       headlessDispatcher: async (request) => {

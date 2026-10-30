@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from 'vitest'
 import type { AutomationRun } from '../../../shared/automations-types'
+import { buildProfileStateCutoverFixture } from '../profile-state-cutover-fixture'
 import { collectWslMoveGateInputs } from './wsl-move-gate-facts'
 import type { WslMoveCutover } from '../../../shared/wsl-move/wsl-move-cutover'
 import { wslMoveCutoverFixture as cutover } from '../__fixtures__/wsl-mover/wsl-move-cutover-fixture'
@@ -284,14 +285,14 @@ describe('quiesceWslMove', () => {
 it.each(['history', 'pending', 'dispatching', 'chat', 'process', 'dispatch'] as const)(
   'derives outstanding work through collector, gate and quiesce: %s',
   async (mode) => {
-    // SAFETY: the collector reads only these run facts, not a synthesized result.
-    const run = {
+    const run: AutomationRun = {
+      ...buildProfileStateCutoverFixture().automationRuns[0]!,
       id: 'delivered',
       automationId: 'auto',
       workspaceId: WORKTREE,
       status: mode === 'pending' || mode === 'dispatching' ? mode : 'dispatched',
       sessionKind: mode === 'chat' ? 'chat' : 'terminal'
-    } as AutomationRun
+    }
     const { deps, journal } = harness({
       gateInputs: () =>
         collectWslMoveGateInputs(

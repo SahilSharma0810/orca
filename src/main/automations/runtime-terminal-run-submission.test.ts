@@ -4,6 +4,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, expect, it, vi } from 'vitest'
 import * as transcripts from '../native-chat/transcript-watch'
+import type { AgentStatusIpcPayload } from '../../shared/agent-status-types'
 import {
   createRuntimeAutomationRunTerminalObserver,
   type AutomationRunTerminalHost
@@ -67,22 +68,25 @@ async function fixture(
     )
   )
   const row = {
+    paneKey: 'pane',
+    prompt: '',
+    stateStartedAt: 1,
     agentType: agent,
     state: 'working',
     receivedAt: 1,
     executionId: 'execution',
     connectionId: null,
     providerSession: { id: 'session', key: 'session_id', transcriptPath: path },
-    subagents: [{ id: 'monitor', kind: 'shell', state: 'working' }]
-  }
+    subagents: [{ id: 'monitor', state: 'working', startedAt: 1 }]
+  } satisfies AgentStatusIpcPayload
   let incarnation = 'original'
-  // SAFETY: this host supplies only external pane/process observations; the reader, join and watcher are production.
-  const runtime = {
+  const runtime: AutomationRunTerminalHost = {
     getTerminalHandleForPaneKey: () => 'handle',
     getTerminalPromptRequestBinding: () => ({ ptyId: 'pty', processIncarnation: incarnation }),
     getAgentStatusRowsForPane: () => [row],
     readObservedAgentStatusPaneIdentityFn: () => ({
       kind: 'observed',
+      dispatchId: null,
       terminalHandle: 'handle',
       processIncarnation: incarnation
     }),
@@ -90,7 +94,7 @@ async function fixture(
     waitForTerminal: async () => {
       throw new Error('aggregate idle must not judge this prompt')
     }
-  } as unknown as AutomationRunTerminalHost
+  }
   const run = {
     ...buildProfileStateCutoverFixture('/fixture').automationRuns[0]!,
     terminalPaneKey: 'pane',

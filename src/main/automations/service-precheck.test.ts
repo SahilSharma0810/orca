@@ -375,7 +375,7 @@ describe('AutomationService prechecks', () => {
         headlessDispatcher: send
       })
       const rendererSend = vi.fn()
-      service.setWebContents({ isDestroyed: () => false, send: rendererSend } as never)
+      service.setWebContents({ isDestroyed: () => false, send: rendererSend })
       vi.setSystemTime(automation.nextRunAt)
       service.setRendererReady()
       try {
