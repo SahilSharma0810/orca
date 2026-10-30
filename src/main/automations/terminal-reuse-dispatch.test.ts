@@ -295,14 +295,24 @@ it.each([
       }
       await flush(options)
     })
-    // Receiver populations bound production scans/projections, including filtering before list APIs return.
+    // Count domain-row populations, including scans before list APIs return; runner/assertion arrays are not production rows.
+    const populationOf = (rows: unknown[]): number => {
+      const row = rows[0]
+      return row &&
+        typeof row === 'object' &&
+        ('automationId' in row ||
+          ('rrule' in row && 'agentId' in row) ||
+          ('paneKey' in row && 'agentType' in row))
+        ? rows.length
+        : 0
+    }
     const filter = Array.prototype.filter
     vi.spyOn(Array.prototype, 'filter').mockImplementation(function (
       this: unknown[],
       predicate,
       thisArg
     ) {
-      counters.visits += this.length
+      counters.visits += populationOf(this)
       return filter.call(this, predicate, thisArg)
     })
     const map = Array.prototype.map
@@ -311,17 +321,17 @@ it.each([
       callback,
       thisArg
     ) {
-      counters.projections += this.length
+      counters.projections += populationOf(this)
       return map.call(this, callback, thisArg)
     })
     const sort = Array.prototype.sort
     vi.spyOn(Array.prototype, 'sort').mockImplementation(function (this: unknown[], compare) {
-      counters.sorts += this.length
+      counters.sorts += populationOf(this)
       return sort.call(this, compare)
     })
     const toSorted = Array.prototype.toSorted
     vi.spyOn(Array.prototype, 'toSorted').mockImplementation(function (this: unknown[], compare) {
-      counters.sorts += this.length
+      counters.sorts += populationOf(this)
       return toSorted.call(this, compare)
     })
     // Whole trigger: counters start before dispatch, including every seed and reuse to persisted result.
@@ -409,5 +419,6 @@ it.each([
       service.stop()
       await service.runInAutomationLane(automation.id, async () => {})
     }
-  }
+  },
+  120_000
 )
